@@ -67,9 +67,10 @@ print('Test data processed.')
 
 # Modeling
 cols_to_drop = ['process_id', 'timestamp', 'pipeline', 'day_of_week', 'previous_run_start_time', 'previous_object']
-cols_to_include = ['object_id', 'total_turbidity_pre_rinse', 'total_turbidity_caustic', 'phase_duration_pre_rinse', 'previous_run_delta']
+cols_to_include = ['object_id', 'total_turbidity_pre_rinse', 'total_turbidity_caustic', 'phase_duration_pre_rinse',
+                   'previous_run_delta', 'total_turbidity_acid']
 response = 'final_rinse_total_turbidity_liter'
-modeling_data = build_lgbm_datasets(joined_data, df_test_output, 0.85, response, cols_to_include=cols_to_include)
+modeling_data = build_lgbm_datasets(joined_data, df_test_output, 0.8, response, cols_to_include=cols_to_include)
 
 # specify your configurations as a dict
 params = {
