@@ -55,20 +55,21 @@ joined_data['previous_run_start_time'] = joined_data.groupby(['pipeline', 'day_o
 joined_data['previous_run_delta'] = (joined_data.timestamp - joined_data.previous_run_start_time).astype('timedelta64[s]')
 joined_data.to_csv('modeling_data.csv')
 
-joined_data.object_id = joined_data.object_id.astype(int)
+joined_data.object_id = joined_data.object_id.astype('category')
 #joined_data.previous_object = joined_data.previous_object.astype(int)
-df_test_output.object_id = df_test_output.object_id.astype(int)
+df_test_output.object_id = df_test_output.object_id.astype('category', categories=joined_data.object_id.cat.categories)
 #df_test_output.previous_object = df_test_output.previous_object.astype(int)
 df_test_output.to_csv('test_processed_data.csv')
 
+df_test_output.object_id
 print('Test data processed.')
 
 
 # Modeling
 cols_to_drop = ['process_id', 'timestamp', 'pipeline', 'day_of_week', 'previous_run_start_time', 'previous_object']
-cols_to_include = ['object_id']
+cols_to_include = ['object_id', 'total_turbidity_pre_rinse', 'total_turbidity_caustic', 'phase_duration_pre_rinse', 'previous_run_delta']
 response = 'final_rinse_total_turbidity_liter'
-modeling_data = build_lgbm_datasets(joined_data, df_test_output, 0.8, response, cols_to_include=cols_to_include)
+modeling_data = build_lgbm_datasets(joined_data, df_test_output, 0.85, response, cols_to_include=cols_to_include)
 
 # specify your configurations as a dict
 params = {
@@ -106,16 +107,16 @@ y_test_pred = pd.DataFrame({'process_id': df_test_output.process_id,
                             response: gbm_full.predict(modeling_data['test'])}
                            )
 
-# # Handle negative values
-# y_test_pred.loc[y_test_pred[response] < 0, response] = y_test_pred.loc[y_test_pred[response] > 0, response].min()
-# y_test_pred = y_test_pred.sort_values(by='process_id')
-# y_test_pred.to_csv('test_predictions.csv', index=False)
-#
-# y_test_pred = y_test_pred.sort_values(by=response)
-# y_test_pred.to_csv('test_predictions_sorted.csv', index=False)
-#
-# test_pred_full = y_test_pred.merge(df_test_output, on = 'process_id').sort_values(by='process_id')
-# test_pred_full.to_csv('test_predictions_full.csv', index=False)
+# Handle negative values
+y_test_pred.loc[y_test_pred[response] < 0, response] = y_test_pred.loc[y_test_pred[response] > 0, response].min()
+y_test_pred = y_test_pred.sort_values(by='process_id')
+y_test_pred.to_csv('test_predictions.csv', index=False)
+
+y_test_pred = y_test_pred.sort_values(by=response)
+y_test_pred.to_csv('test_predictions_sorted.csv', index=False)
+
+test_pred_full = y_test_pred.merge(df_test_output, on = 'process_id').sort_values(by='process_id')
+test_pred_full.to_csv('test_predictions_full.csv', index=False)
 
 
 

@@ -36,8 +36,6 @@ def calculate_start_times(df):
 def engineer_features(df):
     for col in ['timestamp']:
         df[col] = df[col].astype('datetime64[ns]')
-    for col in ['process_id', 'object_id']:
-        df[col] = df[col].astype('category')
 
     df = df[df.phase != 'final_rinse']
 
