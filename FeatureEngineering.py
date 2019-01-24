@@ -86,7 +86,9 @@ def engineer_features(df, timestamps):
 
     df_final_output = df_final_output.merge(timestamps, on='process_id')
     df_final_output['day_of_week'] = df_final_output.timestamp.dt.date
-    df_final_output['cumulative_runs_day'] = df_final_output.groupby(['pipeline', 'day_of_week']).cumcount()
+    df_final_output = df_final_output.sort_values(by=['pipeline','timestamp'])
+    df_final_output['cumulative_runs_day'] = df_final_output.groupby(['pipeline', 'day_of_week']).\
+                                                             cumcount()
     df_final_output['previous_object'] = df_final_output.groupby(['pipeline', 'day_of_week'])['object_id'].shift(1)
     df_final_output['previous_run_start_time'] = df_final_output.groupby(['pipeline', 'day_of_week']).timestamp.shift(1)
     df_final_output['previous_run_delta'] = (df_final_output.timestamp - df_final_output.previous_run_start_time).astype('timedelta64[s]')

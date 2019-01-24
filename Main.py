@@ -26,7 +26,7 @@ else:
 
 # Create walk forward train/validation splits
 num_total_rows = train_process_start_times.shape[0]
-validation_results = pd.DataFrame(columns=['Train_Ratio', 'Best_MAPE', 'Best_Num_Iters'])
+validation_results = pd.DataFrame(columns=['Model_Type', 'Train_Ratio', 'Best_MAPE', 'Best_Num_Iters'])
 response = 'final_rinse_total_turbidity_liter'
 train_val_ratios = list(np.linspace(0.6, 0.9, 7))
 
@@ -72,10 +72,14 @@ for train_ratio in train_val_ratios:
     # Ensure that categories are consistent across training, validation, and test sets
     processed_train_data.object_id = processed_train_data.object_id.astype('category')
     processed_val_data.object_id = processed_val_data.object_id.astype('category', categories=processed_train_data.object_id.cat.categories)
+
+    # Bring type back in to processed data
+    # Needed to create multiple eval sets
+    processed_val_data = processed_val_data.merge(val_processes, on='process_id')
     #processed_test_data.to_csv('test_processed_data.csv')
 
     cols_to_drop = ['process_id', 'timestamp', 'pipeline', 'day_of_week', 'previous_run_start_time', 'previous_object']
-    cols_to_include = list(filter(lambda x: re.search(r'(?=.*pre_rinse|.*caustic)', x), list(processed_train_data.columns))) +\
+    cols_to_include = list(filter(lambda x: re.search(r'(?=.*pre_rinse)', x), list(processed_train_data.columns))) +\
                       ['object_id']
 
     # Modeling
@@ -92,33 +96,120 @@ for train_ratio in train_val_ratios:
 
     print('Starting training...')
     # train
-    gbm = lgb.train(params,
-                    modeling_data['train'],
-                    num_boost_round=2000,
-                    valid_sets=modeling_data['eval'],
-                    verbose_eval=2000,
-                    early_stopping_rounds=50)
+    gbm_prerinse = lgb.train(params,
+                             modeling_data['train'],
+                             num_boost_round=2000,
+                             valid_sets=modeling_data['eval_pre_rinse'],
+                             verbose_eval=2000,
+                             early_stopping_rounds=50)
 
     if train_ratio == 0.9:
-        lgb.plot_importance(gbm, importance_type='gain')
+        lgb.plot_importance(gbm_prerinse, importance_type='gain')
 
-    validation_results = validation_results.append(pd.DataFrame([[train_ratio, round(gbm.best_score['valid_0']['mape'], 5), gbm.best_iteration]],
+    validation_results = validation_results.append(pd.DataFrame([['Pre-rinse',
+                                                                  train_ratio,
+                                                                  round(gbm_prerinse.best_score['valid_0']['mape'], 5),
+                                                                  gbm_prerinse.best_iteration]],
                                                    columns=validation_results.columns))
 
+    # Caustic-specific model
+    cols_to_include = list(filter(lambda x: re.search(r'(?=.*pre_rinse|.*caustic)', x),
+                                  list(processed_train_data.columns))) + \
+                      ['object_id']
+
+    modeling_data = build_lgbm_validation_datasets(processed_train_data, processed_val_data, response,
+                                                   cols_to_include=cols_to_include)
+
+    gbm_caustic = lgb.train(params,
+                            modeling_data['train'],
+                            num_boost_round=2000,
+                            valid_sets=modeling_data['eval_caustic'],
+                            verbose_eval=2000,
+                            early_stopping_rounds=50)
+
+    validation_results = validation_results.append(pd.DataFrame([['Caustic',
+                                                                  train_ratio,
+                                                                  round(gbm_caustic.best_score['valid_0']['mape'], 5),
+                                                                  gbm_caustic.best_iteration]],
+                                                                columns=validation_results.columns))
+
+    # Intermediate rinse-specific model
+    cols_to_include = list(filter(lambda x: re.search(r'(?=.*pre_rinse|.*caustic|.*intermediate)', x),
+                                  list(processed_train_data.columns))) + \
+                      ['object_id']
+
+    modeling_data = build_lgbm_validation_datasets(processed_train_data, processed_val_data, response,
+                                                   cols_to_include=cols_to_include)
+
+    gbm_int_rinse = lgb.train(params,
+                         modeling_data['train'],
+                         num_boost_round=2000,
+                         valid_sets=modeling_data['eval_int_rinse'],
+                         verbose_eval=2000,
+                         early_stopping_rounds=50)
+
+    validation_results = validation_results.append(pd.DataFrame([['Intermediate Rinse',
+                                                                  train_ratio,
+                                                                  round(gbm_int_rinse.best_score['valid_0']['mape'], 5),
+                                                                  gbm_int_rinse.best_iteration]],
+                                                                columns=validation_results.columns))
+
+    # Acid-specific model
+    cols_to_include = list(filter(lambda x: re.search(r'(?=.*pre_rinse|.*caustic|.*intermediate|.*acid)', x),
+                                  list(processed_train_data.columns))) + \
+                           ['object_id']
+
+    modeling_data = build_lgbm_validation_datasets(processed_train_data, processed_val_data, response,
+                                                   cols_to_include=cols_to_include)
+
+    gbm_acid = lgb.train(params,
+                         modeling_data['train'],
+                         num_boost_round=2000,
+                         valid_sets=modeling_data['eval_acid'],
+                         verbose_eval=2000,
+                         early_stopping_rounds=50)
+
+    validation_results = validation_results.append(pd.DataFrame([['Acid',
+                                                                  train_ratio,
+                                                                  round(gbm_acid.best_score['valid_0']['mape'], 5),
+                                                                  gbm_acid.best_iteration]],
+                                                   columns=validation_results.columns))
 
 # Show validation results
-test_iterations = int(round(validation_results.Best_Num_Iters.mean()))
-print(validation_results)
-print('Average MAPE across folds: ' + str(round(validation_results.Best_MAPE.mean(),4)))
-print('Average Best Iterations: ' + str(test_iterations))
+test_iterations_pre_rinse = int(round(validation_results[validation_results.Model_Type == 'Pre-rinse'].Best_Num_Iters.mean()))
+test_iterations_acid = int(round(validation_results[validation_results.Model_Type == 'Acid'].Best_Num_Iters.mean()))
+test_iterations_caustic = int(round(validation_results[validation_results.Model_Type == 'Caustic'].Best_Num_Iters.mean()))
+test_iterations_int_rinse = int(round(validation_results[validation_results.Model_Type == 'Intermediate Rinse'].Best_Num_Iters.mean()))
+est_error_pre_rinse = round(validation_results[validation_results.Model_Type == 'Pre-rinse'].Best_MAPE.mean(), 4)
+est_error_acid = round(validation_results[validation_results.Model_Type == 'Acid'].Best_MAPE.mean(), 4)
+est_error_caustic = round(validation_results[validation_results.Model_Type == 'Pre-rinse'].Best_MAPE.mean(), 4)
+est_error_int_rinse = round(validation_results[validation_results.Model_Type == 'Intermediate Rinse'].Best_MAPE.mean(), 4)
 
-# Train on full data and make predictions
+print(validation_results.sort_values(by=['Model_Type', 'Train_Ratio']))
+print('Best Iterations, pre-rinse model: ' + str(test_iterations_pre_rinse))
+print('Best Iterations, caustic model: ' + str(test_iterations_caustic))
+print('Best Iterations, intermediate-rinse model: ' + str(test_iterations_int_rinse))
+print('Best Iterations, acid model: ' + str(test_iterations_acid))
 print('')
-print('Training full model and making test set predictions...')
-predict_test_values(raw_data, train_process_start_times, test_data, test_process_start_times,
-                    params, response, test_iterations, labels, cols_to_include)
+print('Estimated error for pre-rinse predictions: ' + str(est_error_pre_rinse))
+print('Estimated error for caustic predictions: ' + str(est_error_caustic))
+print('Estimated error for intermediate-rinse predictions: ' + str(est_error_int_rinse))
+print('Estimated error for acid predictions: ' + str(est_error_acid))
+print('')
+print('Estimated total error for all predictions: ' + str(round(0.1 * est_error_pre_rinse +\
+                                                                0.3 * est_error_caustic +\
+                                                                0.3 * est_error_int_rinse +\
+                                                                0.3 * est_error_acid, 4)))
 
 
+#
+# # Train on full data and make predictions
+# print('')
+# print('Training full model and making test set predictions...')
+# predict_test_values(raw_data, train_process_start_times, test_data, test_process_start_times,
+#                     params, response, test_iterations, labels, cols_to_include)
+#
+#
 
 
 
