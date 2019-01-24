@@ -1,7 +1,26 @@
 import pandas as pd
 import numpy as np
 
-threshold = 290000
+
+def calculate_start_times(df):
+    output = pd.DataFrame(df.groupby(['process_id']).timestamp.min()).reset_index()
+    output.timestamp = output.timestamp.astype('datetime64[ns]')
+
+    return output
+
+
+def remove_phases(validation_data):
+    output = validation_data[((validation_data.type == 'pre_rinse') &
+                                (validation_data.phase == 'pre_rinse')) |
+                             ((validation_data.type == 'caustic') &
+                                (validation_data.phase.isin(['pre_rinse', 'caustic']))) |
+                             ((validation_data.type == 'int_rinse') &
+                                (validation_data.phase.isin(['pre_rinse', 'caustic', 'intermediate_rinse']))) |
+                             (validation_data.type == 'acid')]
+
+    return output
+
+
 def engineer_features_phases(df, colname, func):
     phases = ['pre_rinse', 'caustic', 'intermediate_rinse', 'acid']
 
@@ -26,14 +45,8 @@ def engineer_features_process(df_groupby, cols):
 
     return output_df
 
-def calculate_start_times(df):
-    output = pd.DataFrame(df.groupby(['process_id']).timestamp.min()).reset_index()
-    output.timestamp = output.timestamp.astype('datetime64[ns]')
 
-    return output
-
-
-def engineer_features(df):
+def engineer_features(df, timestamps):
     for col in ['timestamp']:
         df[col] = df[col].astype('datetime64[ns]')
 
@@ -53,7 +66,9 @@ def engineer_features(df):
                               'total_turbidity': df_groupby.total_turbidity.sum(),
                               'total_turbidity_rate': df_groupby.total_turbidity.sum() / (df_groupby.timestamp.max() -
                                                       df_groupby.timestamp.min()).astype('timedelta64[s]'),
-                              'cov_return_turbidity': df_groupby.return_turbidity.std() / df_groupby.return_turbidity.mean()
+                              'cov_return_turbidity': df_groupby.return_turbidity.std() / df_groupby.return_turbidity.mean(),
+                              'max_turbidity': df_groupby.total_turbidity.quantile(0.95),
+                              'min_turbidity': df_groupby.total_turbidity.quantile(0.1)
                               }).reset_index()
 
     col_list = list(set(df_output) - set(group_cols))
@@ -67,5 +82,16 @@ def engineer_features(df):
 
     df_final_output = df_output_2.copy()
 
+    df_final_output = df_final_output.replace(0, np.nan)
+
+    df_final_output = df_final_output.merge(timestamps, on='process_id')
+    df_final_output['day_of_week'] = df_final_output.timestamp.dt.date
+    df_final_output['cumulative_runs_day'] = df_final_output.groupby(['pipeline', 'day_of_week']).cumcount()
+    df_final_output['previous_object'] = df_final_output.groupby(['pipeline', 'day_of_week'])['object_id'].shift(1)
+    df_final_output['previous_run_start_time'] = df_final_output.groupby(['pipeline', 'day_of_week']).timestamp.shift(1)
+    df_final_output['previous_run_delta'] = (df_final_output.timestamp - df_final_output.previous_run_start_time).astype('timedelta64[s]')
+
     return df_final_output
 
+
+#def convert_categorial_features(train_data, test_data, cat_cols):
