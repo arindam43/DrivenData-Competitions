@@ -4,10 +4,10 @@ import lightgbm as lgb
 def build_lgbm_validation_datasets(train_data, val_data, response, cols_to_drop=None, cols_to_include=None):
     # Model training
     drop_cols = [response]
-    val_data_acid = val_data[val_data.type == 'acid']
-    val_data_pre_rinse = val_data[val_data.type == 'pre_rinse']
-    val_data_caustic = val_data[val_data.type == 'caustic']
-    val_data_int_rinse = val_data[val_data.type == 'int_rinse']
+    val_data_acid = val_data[val_data.phase_duration_acid.notnull()]
+    val_data_int_rinse = val_data[val_data.phase_duration_intermediate_rinse.notnull()]
+    val_data_caustic = val_data[val_data.phase_duration_caustic.notnull()]
+    val_data_pre_rinse = val_data[val_data.phase_duration_pre_rinse.notnull()]
 
     y_train = train_data.ix[:, response]
     y_val_acid = val_data_acid.ix[:, response]
@@ -52,6 +52,15 @@ def build_lgbm_validation_datasets(train_data, val_data, response, cols_to_drop=
 def build_lgbm_test_datasets(full_train_data, test_data, response, cols_to_drop=None, cols_to_include=None):
     # Model training
     drop_cols = [response]
+    test_data_acid = test_data[test_data.phase_duration_acid.notnull()]
+    test_data_int_rinse = test_data[test_data.phase_duration_acid.isnull() &
+                                    test_data.phase_duration_intermediate_rinse.notnull()]
+    test_data_caustic = test_data[test_data.phase_duration_acid.isnull() &
+                                  test_data.phase_duration_intermediate_rinse.isnull() &
+                                  test_data.phase_duration_caustic.notnull()]
+    test_data_pre_rinse = test_data[test_data.phase_duration_acid.isnull() &
+                                    test_data.phase_duration_intermediate_rinse.isnull() &
+                                    test_data.phase_duration_caustic.isnull()]
 
     y_train = full_train_data.ix[:, response]
 
@@ -60,18 +69,29 @@ def build_lgbm_test_datasets(full_train_data, test_data, response, cols_to_drop=
 
     elif cols_to_include is None:
         x_train = full_train_data.drop(drop_cols + cols_to_drop, axis=1)
-        x_test = test_data.drop(drop_cols + cols_to_drop, axis=1)
+        x_test_acid = test_data_acid.drop(drop_cols + cols_to_drop, axis=1)
+        x_test_pre_rinse = test_data_pre_rinse.drop(drop_cols + cols_to_drop, axis=1)
+        x_test_caustic = test_data_caustic.drop(drop_cols + cols_to_drop, axis=1)
+        x_test_int_rinse = test_data_int_rinse.drop(drop_cols + cols_to_drop, axis=1)
 
     elif cols_to_drop is None:
-        x_train = full_train_data[cols_to_include]
-        x_test = test_data[cols_to_include]
+        x_test_acid = test_data_acid[cols_to_include]
+        x_test_pre_rinse = test_data_pre_rinse[cols_to_include]
+        x_test_caustic = test_data_caustic[cols_to_include]
+        x_test_int_rinse = test_data_int_rinse[cols_to_include]
 
+        if 'process_id' in cols_to_include:
+            cols_to_include.remove('process_id')
+        x_train = full_train_data[cols_to_include]
     else:
         print('How did you even get here?')
 
     # create dataset for lightgbm
-    lgb_full_train = lgb.Dataset(x_train, y_train)
+    lgb_train = lgb.Dataset(x_train, y_train)
 
-    return {'full_train': lgb_full_train,
-            'test': x_test
+    return {'full_train': lgb_train,
+            'test_acid': x_test_acid,
+            'test_pre_rinse': x_test_pre_rinse,
+            'test_caustic': x_test_caustic,
+            'test_int_rinse': x_test_int_rinse
             }
