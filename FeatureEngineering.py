@@ -1,22 +1,10 @@
 import pandas as pd
 import numpy as np
-
+import re
 
 def calculate_start_times(df):
     output = pd.DataFrame(df.groupby(['process_id']).timestamp.min()).reset_index()
     output.timestamp = output.timestamp.astype('datetime64[ns]')
-
-    return output
-
-
-def remove_phases(validation_data):
-    output = validation_data[((validation_data.type == 'pre_rinse') &
-                                (validation_data.phase == 'pre_rinse')) |
-                             ((validation_data.type == 'caustic') &
-                                (validation_data.phase.isin(['pre_rinse', 'caustic']))) |
-                             ((validation_data.type == 'int_rinse') &
-                                (validation_data.phase.isin(['pre_rinse', 'caustic', 'intermediate_rinse']))) |
-                             (validation_data.type == 'acid')]
 
     return output
 
@@ -53,10 +41,6 @@ def engineer_features(df, timestamps):
     df = df[df.phase != 'final_rinse']
 
     df['total_turbidity'] = df.return_turbidity * df.return_flow
-    df['lagged_turbidity'] = df.groupby('process_id').return_turbidity.shift(1)
-    df['delta_turbidity'] = df.lagged_turbidity - df.return_turbidity
-    #df['start_time'] = df.groupby(['process_id', 'phase']).timestamp.transform('min')
-    #df['duration'] = (df.timestamp - df.start_time).astype('timedelta64[s]')
 
     group_cols = ['process_id', 'object_id', 'pipeline', 'phase']
     df_groupby = df.groupby(group_cols)
@@ -64,11 +48,8 @@ def engineer_features(df, timestamps):
     df_output = pd.DataFrame({'phase_duration': (df_groupby.timestamp.max() -
                                                  df_groupby.timestamp.min()).astype('timedelta64[s]'),
                               'total_turbidity': df_groupby.total_turbidity.sum(),
-                              'total_turbidity_rate': df_groupby.total_turbidity.sum() / (df_groupby.timestamp.max() -
-                                                      df_groupby.timestamp.min()).astype('timedelta64[s]'),
-                              'cov_return_turbidity': df_groupby.return_turbidity.std() / df_groupby.return_turbidity.mean(),
-                              'max_turbidity': df_groupby.total_turbidity.quantile(0.95),
-                              'min_turbidity': df_groupby.total_turbidity.quantile(0.1)
+                              'max_supply_flow': df_groupby.supply_flow.quantile(0.9),
+                              'min_supply_flow': df_groupby.supply_flow.quantile(0.2)
                               }).reset_index()
 
     col_list = list(set(df_output) - set(group_cols))
@@ -86,14 +67,19 @@ def engineer_features(df, timestamps):
 
     df_final_output = df_final_output.merge(timestamps, on='process_id')
     df_final_output['day_of_week'] = df_final_output.timestamp.dt.date
-    df_final_output = df_final_output.sort_values(by=['pipeline','timestamp'])
+    df_final_output['weekday_name'] = df_final_output.timestamp.dt.dayofweek
+
+    df_final_output = df_final_output.sort_values(by=['pipeline', 'timestamp'])
     df_final_output['cumulative_runs_day'] = df_final_output.groupby(['pipeline', 'day_of_week']).\
                                                              cumcount()
-    df_final_output['previous_object'] = df_final_output.groupby(['pipeline', 'day_of_week'])['object_id'].shift(1)
-    df_final_output['previous_run_start_time'] = df_final_output.groupby(['pipeline', 'day_of_week']).timestamp.shift(1)
-    df_final_output['previous_run_delta'] = (df_final_output.timestamp - df_final_output.previous_run_start_time).astype('timedelta64[s]')
+    #
+    # cols_to_shift = list(filter(lambda x: re.search(r'(?=.*pre_rinse|.*caustic|.*intermediate|.*acid)', x), list(df_final_output.columns)))
+    #
+    # df_final_output['previous_object_id'] = df_final_output.groupby('pipeline')['object_id'].shift(1).fillna(-10000).astype(int)
+    #
+    # for col in cols_to_shift:
+    #     df_final_output['previous_' + col] = df_final_output.groupby('pipeline')[col].shift(1)
+    #
 
     return df_final_output
 
-
-#def convert_categorial_features(train_data, test_data, cat_cols):

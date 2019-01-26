@@ -1,14 +1,24 @@
-import os
-import lightgbm as lgb
-from datetime import datetime
 import pandas as pd
+import sys
+import os
+from importlib import reload
+from datetime import datetime
+
+try:
+    reload(sys.modules['FeatureEngineering'])
+except KeyError:
+    pass
 from FeatureEngineering import engineer_features
-from Modeling import build_lgbm_test_datasets
-import re
+
+try:
+    reload(sys.modules['Modeling'])
+except KeyError:
+    pass
+from Modeling import build_test_models
 
 
 def predict_test_values(raw_data, train_process_start_times, test_data, test_process_start_times,
-                        params, response, test_iterations, labels):
+                        params, response, test_iterations, cols_to_include, labels):
 
     y_test_pred = []
 
@@ -26,103 +36,11 @@ def predict_test_values(raw_data, train_process_start_times, test_data, test_pro
     processed_full_train_data.object_id = processed_full_train_data.object_id.astype('category')
     processed_test_data.object_id = processed_test_data.object_id.astype('category', categories=processed_full_train_data.object_id.cat.categories)
 
-
-
-    # Acid model
-    cols_to_include = list(filter(lambda x: re.search(r'(?=.*pre_rinse|.*caustic|.*intermediate|.*acid)', x),
-                                  list(processed_full_train_data.columns))) + \
-                      ['object_id', 'process_id']
-
-    # Build lgbm data sets on full train and test data
-    prediction_data = build_lgbm_test_datasets(processed_full_train_data, processed_test_data, response, cols_to_include=cols_to_include)
-
-    # Build model on full training data to make predictions for test set
-    print('Building model on full training data...')
-
-    gbm_full = lgb.train(params,
-                         prediction_data['full_train'],
-                         num_boost_round=test_iterations['acid'])
-
-    # Make predictions on test set and save to .csv
-    print('Making test set predictions...')
-
-    y_test_pred.append(pd.DataFrame({'process_id': prediction_data['test_acid'].process_id,
-                                response: gbm_full.predict(prediction_data['test_acid'])}
-                               ))
-
-
-
-    # Intermediate rinse model
-    cols_to_include = list(filter(lambda x: re.search(r'(?=.*pre_rinse|.*caustic|.*intermediate)', x),
-                                  list(processed_full_train_data.columns))) + \
-                      ['object_id', 'process_id']
-
-    # Build lgbm data sets on full train and test data
-    prediction_data = build_lgbm_test_datasets(processed_full_train_data, processed_test_data, response, cols_to_include=cols_to_include)
-
-    # Build model on full training data to make predictions for test set
-    print('Building model on full training data...')
-
-    gbm_full = lgb.train(params,
-                         prediction_data['full_train'],
-                         num_boost_round=test_iterations['int_rinse'])
-
-    # Make predictions on test set and save to .csv
-    print('Making test set predictions...')
-
-    y_test_pred.append(pd.DataFrame({'process_id': prediction_data['test_int_rinse'].process_id,
-                                     response: gbm_full.predict(prediction_data['test_int_rinse'])}
-                                    ))
-
-
-    # Caustic model
-    cols_to_include = list(filter(lambda x: re.search(r'(?=.*pre_rinse|.*caustic)', x),
-                                  list(processed_full_train_data.columns))) + \
-                      ['object_id', 'process_id']
-
-    # Build lgbm data sets on full train and test data
-    prediction_data = build_lgbm_test_datasets(processed_full_train_data, processed_test_data, response, cols_to_include=cols_to_include)
-
-    # Build model on full training data to make predictions for test set
-    print('Building model on full training data...')
-
-    gbm_full = lgb.train(params,
-                         prediction_data['full_train'],
-                         num_boost_round=test_iterations['caustic'])
-
-    # Make predictions on test set and save to .csv
-    print('Making test set predictions...')
-
-    y_test_pred.append(pd.DataFrame({'process_id': prediction_data['test_caustic'].process_id,
-                                     response: gbm_full.predict(prediction_data['test_caustic'])}
-                                    ))
-
-
-
-    # Pre-rinse model
-    cols_to_include = list(filter(lambda x: re.search(r'(?=.*pre_rinse)', x),
-                                  list(processed_full_train_data.columns))) + \
-                      ['object_id', 'process_id']
-
-    # Build lgbm data sets on full train and test data
-    prediction_data = build_lgbm_test_datasets(processed_full_train_data, processed_test_data, response, cols_to_include=cols_to_include)
-
-    # Build model on full training data to make predictions for test set
-    print('Building model on full training data...')
-
-    gbm_full = lgb.train(params,
-                         prediction_data['full_train'],
-                         num_boost_round=test_iterations['pre_rinse'])
-
-    # Make predictions on test set and save to .csv
-    print('Making test set predictions...')
-
-    y_test_pred.append(pd.DataFrame({'process_id': prediction_data['test_pre_rinse'].process_id,
-                                     response: gbm_full.predict(prediction_data['test_pre_rinse'])}
-                                    ))
+    for model_type in cols_to_include.keys():
+        y_test_pred = build_test_models(model_type, processed_full_train_data, processed_test_data,
+                                        response, params, test_iterations, cols_to_include[model_type], y_test_pred)
 
     y_test_pred_final = pd.concat(y_test_pred).sort_values(by='process_id')
-
 
 
     # Handle negative values by setting them equal to the lowest predicted value
