@@ -8,7 +8,7 @@ try:
     reload(sys.modules['FeatureEngineering'])
 except KeyError:
     pass
-from FeatureEngineering import engineer_features, calculate_start_times
+from FeatureEngineering import engineer_features, calculate_start_times, remove_outliers
 
 try:
     reload(sys.modules['Modeling'])
@@ -40,11 +40,13 @@ if 'raw_data' not in locals():
 else:
     print('Data already read in, skipping data read and start time calculations.')
 
+
 # Create walk forward train/validation splits
 num_total_rows = train_process_start_times.shape[0]
 validation_results = pd.DataFrame(columns=['Model_Type', 'Train_Ratio', 'Best_MAPE', 'Best_Num_Iters'])
 response = 'final_rinse_total_turbidity_liter'
 train_val_ratios = list(np.linspace(0.5, 0.8, 4))
+#train_ratio = 0.8
 max_train_ratio = max(train_val_ratios)
 
 for train_ratio in train_val_ratios:
@@ -65,27 +67,27 @@ for train_ratio in train_val_ratios:
     processed_val_data = engineer_features(raw_val_data, train_process_start_times)
     print('Successfully engineered features.')
 
-    # Bring in labels and start times for train and validation data
-    processed_train_data = processed_train_data.merge(labels, on='process_id').\
-                                                sort_values(by='timestamp')
+    # Remove outliers from training data
+    processed_train_data = remove_outliers(processed_train_data)
 
-    processed_val_data = processed_val_data.merge(labels, on='process_id').\
-                                            sort_values(by='timestamp')
+    # Bring in labels for train and validation data
+    processed_train_data = processed_train_data.merge(labels, on='process_id')
+    processed_val_data = processed_val_data.merge(labels, on='process_id')
 
     # Convert object id to category
     # Ensure that categories are consistent across training, validation, and test sets
-    processed_train_data['object_id'] = processed_train_data['object_id'].astype('category')
-    processed_val_data['object_id'] = processed_val_data['object_id'].astype('category', categories=processed_train_data['object_id'].cat.categories)
-    # processed_train_data['previous_object_id'] = processed_train_data['previous_object_id'].astype('category', categories=processed_train_data['object_id'].cat.categories)
-    # processed_val_data['previous_object_id'] = processed_val_data['previous_object_id'].astype('category', categories=processed_train_data['object_id'].cat.categories)
+    for col in ['object_id']:
+        processed_train_data[col] = processed_train_data[col].astype('category')
+        processed_val_data[col] = processed_val_data[col].astype('category', categories=processed_train_data['object_id'].cat.categories)
 
-    #processed_test_data.to_csv('test_processed_data.csv')
+    # processed_test_data.to_csv('test_processed_data.csv')
 
     non_phase_cols = ['object_id']
     cols_to_include = {'pre_rinse': list(filter(lambda x: re.search(r'(?=.*pre_rinse)', x), list(processed_train_data.columns))) + non_phase_cols,
                        'caustic': list(filter(lambda x: re.search(r'(?=.*pre_rinse|.*caustic)', x), list(processed_train_data.columns))) + non_phase_cols,
                        'int_rinse': list(filter(lambda x: re.search(r'(?=.*pre_rinse|.*caustic|.*intermediate)', x), list(processed_train_data.columns))) + non_phase_cols,
-                       'acid': list(filter(lambda x: re.search(r'(?=.*pre_rinse|.*caustic|.*intermediate|.*acid)', x), list(processed_train_data.columns))) + non_phase_cols,
+                       'acid': list(filter(lambda x: re.search(r'(?=.*pre_rinse|.*caustic|.*intermediate|.*acid)', x), list(processed_train_data.columns))) + non_phase_cols
+                       # 'acid': list(set(processed_train_data.columns) - set(['object_id', 'process_id', 'pipeline', response])) + non_phase_cols
                        }
 
     # specify your configurations as a dict
@@ -93,15 +95,18 @@ for train_ratio in train_val_ratios:
         'boosting_type': 'gbdt',
         'objective': 'mape',
         'num_leaves': 63,
-        'learning_rate': 0.02,
-        'verbose': -1
+        'learning_rate': 0.01,
+        'verbose': -1,
+        'min_data_in_leaf': 25
     }
 
     for model_type in cols_to_include.keys():
-        validation_results = build_models(model_type, 'validation', processed_train_data, processed_val_data, params,
+        validation_results = build_models(model_type, processed_train_data, processed_val_data, params,
                                           response, cols_to_include[model_type], train_ratio, max_train_ratio, validation_results)
 
 test_iterations = calculate_validation_metrics(validation_results)
+
+#processed_train_data = processed_train_data.sort_values(by=['object_id', 'timestamp'])
 
 # Train on full data and make predictions
 print('')

@@ -8,7 +8,7 @@ try:
     reload(sys.modules['FeatureEngineering'])
 except KeyError:
     pass
-from FeatureEngineering import engineer_features
+from FeatureEngineering import engineer_features, remove_outliers
 
 try:
     reload(sys.modules['Modeling'])
@@ -26,6 +26,9 @@ def predict_test_values(raw_data, train_process_start_times, test_data, test_pro
     processed_full_train_data = engineer_features(raw_data, train_process_start_times)
     processed_full_train_data = processed_full_train_data.merge(labels, on='process_id').\
                                                           sort_values(by='timestamp')
+
+    # Remove training data outliers
+    processed_full_train_data = remove_outliers(processed_full_train_data)
 
     # Build data set on test data
     processed_test_data = engineer_features(test_data, test_process_start_times)

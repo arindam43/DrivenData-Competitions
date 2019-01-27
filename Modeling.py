@@ -1,5 +1,7 @@
 import lightgbm as lgb
 import pandas as pd
+import shap
+from IPython.core.display import HTML
 
 
 def build_lgbm_validation_datasets(train_data, val_data, response, cols_to_drop=None, cols_to_include=None):
@@ -100,7 +102,7 @@ def build_lgbm_test_datasets(full_train_data, test_data, response, cols_to_drop=
             }
 
 
-def build_models(model_type, val_or_test, processed_train_data, processed_val_data, params, response, cols_to_include,
+def build_models(model_type, processed_train_data, processed_val_data, params, response, cols_to_include,
                  train_ratio, max_train_ratio, validation_results):
 
 
@@ -117,8 +119,22 @@ def build_models(model_type, val_or_test, processed_train_data, processed_val_da
                           verbose_eval=2000,
                           early_stopping_rounds=30)
 
-    if train_ratio == max_train_ratio:
-        lgb.plot_importance(gbm_train)
+    modeling_data = build_lgbm_validation_datasets(processed_train_data, processed_val_data, response,
+                                                   cols_to_include=cols_to_include)
+
+    if train_ratio == max_train_ratio and model_type == 'acid':
+        #lgb.plot_importance(gbm_train)
+
+        # explain the model's predictions using SHAP values
+        # (same syntax works for LightGBM, CatBoost, and scikit-learn models)
+        explainer = shap.TreeExplainer(gbm_train)
+        shap_values = explainer.shap_values(modeling_data['eval_' + model_type].data)
+
+        # visualize the first prediction's explanation
+        # shap.force_plot(explainer.expected_value, shap_values[0, :], modeling_data['eval_acid'].data.iloc[0, :], matplotlib=True)
+        # shap.dependence_plot('total_turbidity_acid', shap_values, modeling_data['eval_acid'].data)
+        # shap.summary_plot(shap_values, modeling_data['eval_' + model_type].data)
+        shap.summary_plot(shap_values, modeling_data['eval_' + model_type].data, plot_type='bar')
 
     validation_results = validation_results.append(pd.DataFrame([[model_type,
                                                                   train_ratio,
