@@ -44,7 +44,7 @@ else:
 # Create walk forward train/validation splits
 validation_results = pd.DataFrame(columns=['Model_Type', 'Train_Ratio', 'Best_MAPE', 'Best_Num_Iters'])
 response = 'final_rinse_total_turbidity_liter'
-train_val_ratios = list(range(40, 54, 4))
+train_val_ratios = list(range(40, 56, 2))
 max_train_ratio = max(train_val_ratios)
 
 for train_ratio in train_val_ratios:
