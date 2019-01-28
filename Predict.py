@@ -17,13 +17,13 @@ except KeyError:
 from Modeling import build_test_models
 
 
-def predict_test_values(raw_data, train_process_start_times, test_data, test_process_start_times,
+def predict_test_values(raw_data, train_start_times, test_data, test_start_times,
                         params, response, test_iterations, cols_to_include, labels):
 
     y_test_pred = []
 
     # Build data set on full training data
-    processed_full_train_data = engineer_features(raw_data, train_process_start_times)
+    processed_full_train_data = engineer_features(raw_data, train_start_times)
     processed_full_train_data = processed_full_train_data.merge(labels, on='process_id').\
                                                           sort_values(by='timestamp')
 
@@ -31,9 +31,8 @@ def predict_test_values(raw_data, train_process_start_times, test_data, test_pro
     processed_full_train_data = remove_outliers(processed_full_train_data)
 
     # Build data set on test data
-    processed_test_data = engineer_features(test_data, test_process_start_times)
-    processed_test_data = processed_test_data.merge(test_process_start_times, on='process_id').\
-                                              sort_values(by='process_id')
+    processed_test_data = engineer_features(test_data, test_start_times)
+    processed_test_data = processed_test_data.sort_values(by='process_id')
 
     # Align categories across full training data and test set
     processed_full_train_data.object_id = processed_full_train_data.object_id.astype('category')

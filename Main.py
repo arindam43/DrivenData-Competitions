@@ -34,37 +34,34 @@ if 'raw_data' not in locals():
     # Determine start times for train and test data
     # Necessary to properly do walk forward validation
     print('Determining start times...')
-    train_process_start_times = calculate_start_times(raw_data).sort_values(by='timestamp')
-    test_process_start_times = calculate_start_times(test_data)
+    train_start_times = calculate_start_times(raw_data).sort_values(by='timestamp')
+    test_start_times = calculate_start_times(test_data)
     print('Start times successfully determined.')
 else:
     print('Data already read in, skipping data read and start time calculations.')
 
 
 # Create walk forward train/validation splits
-num_total_rows = train_process_start_times.shape[0]
 validation_results = pd.DataFrame(columns=['Model_Type', 'Train_Ratio', 'Best_MAPE', 'Best_Num_Iters'])
 response = 'final_rinse_total_turbidity_liter'
-train_val_ratios = list(np.linspace(0.5, 0.8, 4))
-#train_ratio = 0.8
+train_val_ratios = list(range(40, 54, 4))
 max_train_ratio = max(train_val_ratios)
 
 for train_ratio in train_val_ratios:
     print('')
-    print('Training with ' + str(round(train_ratio * 100, 1)) + '% of training data...')
+    print('Training with first ' + str(int(train_ratio)) + ' days of training data...')
 
     # Identify which processes will be train and which will be validation
-    num_train_rows = int(round(train_ratio * num_total_rows))
-    train_processes = pd.DataFrame(train_process_start_times.process_id[0:num_train_rows])
-    val_processes = pd.DataFrame(train_process_start_times.process_id[num_train_rows:num_total_rows])
+    train_processes = pd.DataFrame(train_start_times.process_id[train_start_times.day_number <= train_ratio])
+    val_processes = pd.DataFrame(train_start_times.process_id[train_start_times.day_number > train_ratio])
 
     raw_train_data = raw_data[raw_data.process_id.isin(train_processes.process_id)]
     raw_val_data = raw_data[raw_data.process_id.isin(val_processes.process_id)]
 
     # Engineer phase-level features on train, validation, and test sets
     print('Engineering features on train, validation sets...')
-    processed_train_data = engineer_features(raw_train_data, train_process_start_times)
-    processed_val_data = engineer_features(raw_val_data, train_process_start_times)
+    processed_train_data = engineer_features(raw_train_data, train_start_times)
+    processed_val_data = engineer_features(raw_val_data, train_start_times)
     print('Successfully engineered features.')
 
     # Remove outliers from training data
@@ -87,7 +84,7 @@ for train_ratio in train_val_ratios:
                        'caustic': list(filter(lambda x: re.search(r'(?=.*pre_rinse|.*caustic)', x), list(processed_train_data.columns))) + non_phase_cols,
                        'int_rinse': list(filter(lambda x: re.search(r'(?=.*pre_rinse|.*caustic|.*intermediate)', x), list(processed_train_data.columns))) + non_phase_cols,
                        'acid': list(filter(lambda x: re.search(r'(?=.*pre_rinse|.*caustic|.*intermediate|.*acid)', x), list(processed_train_data.columns))) + non_phase_cols
-                       # 'acid': list(set(processed_train_data.columns) - set(['object_id', 'process_id', 'pipeline', response])) + non_phase_cols
+                       #'acid': list(set(processed_train_data.columns) - set(['object_id', 'process_id', 'pipeline', 'day_number', 'timestamp', response])) + non_phase_cols
                        }
 
     # specify your configurations as a dict
@@ -97,7 +94,6 @@ for train_ratio in train_val_ratios:
         'num_leaves': 63,
         'learning_rate': 0.01,
         'verbose': -1,
-        'min_data_in_leaf': 25
     }
 
     for model_type in cols_to_include.keys():
@@ -111,7 +107,7 @@ test_iterations = calculate_validation_metrics(validation_results)
 # Train on full data and make predictions
 print('')
 print('Training full model and making test set predictions...')
-predict_test_values(raw_data, train_process_start_times, test_data, test_process_start_times,
+predict_test_values(raw_data, train_start_times, test_data, test_start_times,
                     params, response, test_iterations, cols_to_include, labels)
 
 

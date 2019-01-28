@@ -4,7 +4,7 @@ import shap
 from IPython.core.display import HTML
 
 
-def build_lgbm_validation_datasets(train_data, val_data, response, cols_to_drop=None, cols_to_include=None):
+def build_lgbm_validation_datasets(train_data, val_data, response, train_ratio, cols_to_drop=None, cols_to_include=None):
     # Model training
     drop_cols = [response]
     val_data_acid = val_data[val_data.phase_duration_acid.notnull()]
@@ -107,19 +107,20 @@ def build_models(model_type, processed_train_data, processed_val_data, params, r
 
 
     # Modeling
-    modeling_data = build_lgbm_validation_datasets(processed_train_data, processed_val_data, response,
+    modeling_data = build_lgbm_validation_datasets(processed_train_data, processed_val_data, response, train_ratio,
                                                    cols_to_include=cols_to_include)
 
     print('Starting training...')
     # train
     gbm_train = lgb.train(params,
                           modeling_data['train'],
-                          num_boost_round=2000,
+                          num_boost_round=3000,
                           valid_sets=modeling_data['eval_' + model_type],
-                          verbose_eval=2000,
-                          early_stopping_rounds=30)
+                          verbose_eval=3000,
+                          early_stopping_rounds=20
+                         )
 
-    modeling_data = build_lgbm_validation_datasets(processed_train_data, processed_val_data, response,
+    modeling_data = build_lgbm_validation_datasets(processed_train_data, processed_val_data, response, train_ratio,
                                                    cols_to_include=cols_to_include)
 
     if train_ratio == max_train_ratio and model_type == 'acid':
