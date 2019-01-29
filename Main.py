@@ -31,10 +31,14 @@ if 'raw_data' not in locals():
     test_data = pd.read_csv("test_values.csv")
     print('Successfully read in data sets.')
 
+    # Preprocessing - convert "intermediate rinse" to 'int_rinse'
+    raw_data.phase[raw_data.phase == 'intermediate_rinse'] = 'int_rinse'
+    test_data.phase[test_data.phase == 'intermediate_rinse'] = 'int_rinse'
+
     # Determine start times for train and test data
     # Necessary to properly do walk forward validation
     print('Determining start times...')
-    train_start_times = calculate_start_times(raw_data).sort_values(by='timestamp')
+    train_start_times = calculate_start_times(raw_data).sort_values(by='start_time')
     test_start_times = calculate_start_times(test_data)
     print('Start times successfully determined.')
 else:
@@ -44,7 +48,7 @@ else:
 # Create walk forward train/validation splits
 validation_results = pd.DataFrame(columns=['Model_Type', 'Train_Ratio', 'Best_MAPE', 'Best_Num_Iters'])
 response = 'final_rinse_total_turbidity_liter'
-train_val_ratios = list(range(40, 56, 2))
+train_val_ratios = list(range(40, 53, 4))  # training set sizes of 40, 44, 48, and 52 days
 max_train_ratio = max(train_val_ratios)
 
 for train_ratio in train_val_ratios:
@@ -64,8 +68,18 @@ for train_ratio in train_val_ratios:
     processed_val_data = engineer_features(raw_val_data, train_start_times)
     print('Successfully engineered features.')
 
+    # Drop features that make no sense (produce all 0 or nan)
+    keep_cols = processed_train_data.apply(lambda x: ((x == 0) | (x.isnull())).sum() / len(x)) <= 0.995
+    processed_train_data = processed_train_data[list(keep_cols[keep_cols].index)]
+    processed_val_data = processed_val_data[list(keep_cols[keep_cols].index)]
+
     # Remove outliers from training data
     processed_train_data = remove_outliers(processed_train_data)
+
+    # EDA stuff
+    if train_ratio == max_train_ratio:
+        cor_mat = processed_train_data.corr()
+        eda = processed_train_data.describe()
 
     # Bring in labels for train and validation data
     processed_train_data = processed_train_data.merge(labels, on='process_id')
@@ -82,27 +96,25 @@ for train_ratio in train_val_ratios:
     non_phase_cols = ['object_id']
     cols_to_include = {'pre_rinse': list(filter(lambda x: re.search(r'(?=.*pre_rinse)', x), list(processed_train_data.columns))) + non_phase_cols,
                        'caustic': list(filter(lambda x: re.search(r'(?=.*pre_rinse|.*caustic)', x), list(processed_train_data.columns))) + non_phase_cols,
-                       'int_rinse': list(filter(lambda x: re.search(r'(?=.*pre_rinse|.*caustic|.*intermediate)', x), list(processed_train_data.columns))) + non_phase_cols,
-                       'acid': list(filter(lambda x: re.search(r'(?=.*pre_rinse|.*caustic|.*intermediate|.*acid)', x), list(processed_train_data.columns))) + non_phase_cols
+                       'int_rinse': list(filter(lambda x: re.search(r'(?=.*pre_rinse|.*caustic|.*int_)', x), list(processed_train_data.columns))) + non_phase_cols,
+                       'acid': list(filter(lambda x: re.search(r'(?=.*pre_rinse|.*caustic|.*int_|.*acid)', x), list(processed_train_data.columns))) + non_phase_cols
                        #'acid': list(set(processed_train_data.columns) - set(['object_id', 'process_id', 'pipeline', 'day_number', 'timestamp', response])) + non_phase_cols
                        }
 
     # specify your configurations as a dict
-    params = {
-        'boosting_type': 'gbdt',
-        'objective': 'mape',
-        'num_leaves': 63,
-        'learning_rate': 0.01,
-        'verbose': -1,
+    params = {'pre_rinse': {'boosting_type': 'gbdt', 'objective': 'mape', 'num_leaves': 31, 'learning_rate': 0.02, 'verbose': -1, 'min_data_in_leaf': 25},
+              'caustic': {'boosting_type': 'gbdt', 'objective': 'mape', 'num_leaves': 63, 'learning_rate': 0.02, 'verbose': -1, 'min_data_in_leaf': 25},
+              'int_rinse': {'boosting_type': 'gbdt', 'objective': 'mape', 'num_leaves': 63, 'learning_rate': 0.02, 'verbose': -1, 'min_data_in_leaf': 25},
+              'acid': {'boosting_type': 'gbdt', 'objective': 'mape', 'num_leaves': 70, 'learning_rate': 0.02, 'verbose': -1, 'min_data_in_leaf': 25},
     }
 
     for model_type in cols_to_include.keys():
-        validation_results = build_models(model_type, processed_train_data, processed_val_data, params,
+        validation_results = build_models(model_type, processed_train_data, processed_val_data, params[model_type],
                                           response, cols_to_include[model_type], train_ratio, max_train_ratio, validation_results)
 
 test_iterations = calculate_validation_metrics(validation_results)
 
-#processed_train_data = processed_train_data.sort_values(by=['object_id', 'timestamp'])
+processed_train_data = processed_train_data.sort_values(by=['object_id', 'start_time'])
 
 # Train on full data and make predictions
 print('')

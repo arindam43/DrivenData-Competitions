@@ -1,14 +1,14 @@
 import lightgbm as lgb
 import pandas as pd
 import shap
-from IPython.core.display import HTML
+import matplotlib
 
 
 def build_lgbm_validation_datasets(train_data, val_data, response, train_ratio, cols_to_drop=None, cols_to_include=None):
     # Model training
     drop_cols = [response]
     val_data_acid = val_data[val_data.phase_duration_acid.notnull()]
-    val_data_int_rinse = val_data[val_data.phase_duration_intermediate_rinse.notnull()]
+    val_data_int_rinse = val_data[val_data.phase_duration_int_rinse.notnull()]
     val_data_caustic = val_data[val_data.phase_duration_caustic.notnull()]
     val_data_pre_rinse = val_data[val_data.phase_duration_pre_rinse.notnull()]
 
@@ -59,12 +59,12 @@ def build_lgbm_test_datasets(full_train_data, test_data, response, cols_to_drop=
 
     test_data_acid = test_data[test_data.phase_duration_acid.notnull()]
     test_data_int_rinse = test_data[test_data.phase_duration_acid.isnull() &
-                                    test_data.phase_duration_intermediate_rinse.notnull()]
+                                    test_data.phase_duration_int_rinse.notnull()]
     test_data_caustic = test_data[test_data.phase_duration_acid.isnull() &
-                                  test_data.phase_duration_intermediate_rinse.isnull() &
+                                  test_data.phase_duration_int_rinse.isnull() &
                                   test_data.phase_duration_caustic.notnull()]
     test_data_pre_rinse = test_data[test_data.phase_duration_acid.isnull() &
-                                    test_data.phase_duration_intermediate_rinse.isnull() &
+                                    test_data.phase_duration_int_rinse.isnull() &
                                     test_data.phase_duration_caustic.isnull()]
 
     y_train = full_train_data.ix[:, response]
@@ -128,6 +128,7 @@ def build_models(model_type, processed_train_data, processed_val_data, params, r
 
         # explain the model's predictions using SHAP values
         # (same syntax works for LightGBM, CatBoost, and scikit-learn models)
+        matplotlib.pyplot.close()
         explainer = shap.TreeExplainer(gbm_train)
         shap_values = explainer.shap_values(modeling_data['eval_' + model_type].data)
 
@@ -135,7 +136,7 @@ def build_models(model_type, processed_train_data, processed_val_data, params, r
         # shap.force_plot(explainer.expected_value, shap_values[0, :], modeling_data['eval_acid'].data.iloc[0, :], matplotlib=True)
         # shap.dependence_plot('total_turbidity_acid', shap_values, modeling_data['eval_acid'].data)
         # shap.summary_plot(shap_values, modeling_data['eval_' + model_type].data)
-        shap.summary_plot(shap_values, modeling_data['eval_' + model_type].data, plot_type='bar')
+        shap.summary_plot(shap_values, modeling_data['eval_' + model_type].data, plot_type='bar', max_display=100)
 
     validation_results = validation_results.append(pd.DataFrame([[model_type,
                                                                   train_ratio,

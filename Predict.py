@@ -25,7 +25,7 @@ def predict_test_values(raw_data, train_start_times, test_data, test_start_times
     # Build data set on full training data
     processed_full_train_data = engineer_features(raw_data, train_start_times)
     processed_full_train_data = processed_full_train_data.merge(labels, on='process_id').\
-                                                          sort_values(by='timestamp')
+                                                          sort_values(by='start_time')
 
     # Remove training data outliers
     processed_full_train_data = remove_outliers(processed_full_train_data)
@@ -40,7 +40,7 @@ def predict_test_values(raw_data, train_start_times, test_data, test_start_times
 
     for model_type in cols_to_include.keys():
         y_test_pred = build_test_models(model_type, processed_full_train_data, processed_test_data,
-                                        response, params, test_iterations, cols_to_include[model_type], y_test_pred)
+                                        response, params[model_type], test_iterations, cols_to_include[model_type], y_test_pred)
 
     y_test_pred_final = pd.concat(y_test_pred).sort_values(by='process_id')
 
