@@ -16,25 +16,25 @@ def calculate_features(df_groupby):
     return pd.DataFrame({'phase_duration': (df_groupby.timestamp.max() -
                                             df_groupby.timestamp.min()).astype('timedelta64[s]'),
 
-                         'caus_flow': df_groupby.total_caustic_flow.sum(),
-                         'ac_flow': df_groupby.total_acid_flow.sum(),
-                         'rec_water_flow': df_groupby.total_recovery_water_flow.sum(),
-                         'drain_flow': df_groupby.total_drain_flow.sum(),
+                         'caus_flow': df_groupby.caustic_flow.sum(),
+                         'ac_flow': df_groupby.acid_flow.sum(),
+                         'rec_water_flow': df_groupby.recovery_water_flow.sum(),
+                         'drain_flow': df_groupby.drain_flow.sum(),
 
-                         'caus_flow_end': df_groupby.total_caustic_flow_end.sum(),
-                         'ac_flow_end': df_groupby.total_acid_flow_end.sum(),
-                         'rec_water_flow_end': df_groupby.total_recovery_water_flow_end.sum(),
-                         'drain_flow_end': df_groupby.total_drain_flow_end.sum(),
+                         'caus_flow_end': df_groupby.caustic_flow_end.sum(),
+                         'ac_flow_end': df_groupby.acid_flow_end.sum(),
+                         'rec_water_flow_end': df_groupby.recovery_water_flow_end.sum(),
+                         'drain_flow_end': df_groupby.drain_flow_end.sum(),
 
-                         'caus_temp': df_groupby.total_caustic_temp.min(),
-                         'ac_temp': df_groupby.total_acid_temp.min(),
-                         'rec_water_temp': df_groupby.total_recovery_water_temp.min(),
-                         'drain_temp': df_groupby.total_drain_temp.min(),
+                         'caus_temp': df_groupby.caustic_temp.min(),
+                         'ac_temp': df_groupby.acid_temp.min(),
+                         'rec_water_temp': df_groupby.recovery_water_temp.min(),
+                         'drain_temp': df_groupby.drain_temp.min(),
 
                          'obj_low_level': df_groupby.object_low_level.sum() / (df_groupby.timestamp.max() -
                                                                                df_groupby.timestamp.min()).astype('timedelta64[s]'),
                          'lsh_caus': df_groupby.tank_lsh_caustic.sum() / (df_groupby.timestamp.max() -
-                                                                          df_groupby.timestamp.min()).astype('timedelta64[s]'),
+                                                                          df_groupby.timestamp.min()).astype('timedelta64[s]')
                         }).reset_index()
 
 
@@ -45,21 +45,21 @@ def engineer_features(df, timestamps):
     # Row level features
     df['return_flow'] = np.maximum(0, df.return_flow)
     # df['total_turbidity'] = df.return_flow * df.return_turbidity
-    df['total_caustic_flow'] = df.return_flow * df.return_caustic * df.return_turbidity
-    df['total_acid_flow'] = df.return_flow * df.return_acid * df.return_turbidity
-    df['total_recovery_water_flow'] = df.return_flow * df.return_recovery_water * df.return_turbidity
-    df['total_drain_flow'] = df.return_flow * df.return_drain * df.return_turbidity
+    df['caustic_flow'] = df.return_flow * df.return_caustic * df.return_turbidity
+    df['acid_flow'] = df.return_flow * df.return_acid * df.return_turbidity
+    df['recovery_water_flow'] = df.return_flow * df.return_recovery_water * df.return_turbidity
+    df['drain_flow'] = df.return_flow * df.return_drain * df.return_turbidity
 
-    df['total_caustic_temp'] = df.return_temperature * df.return_caustic
-    df['total_acid_temp'] = df.return_temperature * df.return_acid
-    df['total_recovery_water_temp'] = df.return_temperature * df.return_recovery_water
-    df['total_drain_temp'] = df.return_temperature * df.return_drain
+    df['caustic_temp'] = df.return_temperature * df.return_caustic
+    df['acid_temp'] = df.return_temperature * df.return_acid
+    df['recovery_water_temp'] = df.return_temperature * df.return_recovery_water
+    df['drain_temp'] = df.return_temperature * df.return_drain
 
     df['phase_elapse_end'] = (df.groupby(['process_id', 'phase']).timestamp.transform('max') - df.timestamp).dt.seconds
-    df['total_caustic_flow_end'] = df.return_flow * df.return_caustic * df.return_turbidity * (df.phase_elapse_end <= 40)
-    df['total_acid_flow_end'] = df.return_flow * df.return_acid * df.return_turbidity * (df.phase_elapse_end <= 40)
-    df['total_recovery_water_flow_end'] = df.return_flow * df.return_recovery_water * df.return_turbidity * (df.phase_elapse_end <= 40)
-    df['total_drain_flow_end'] = df.return_flow * df.return_drain * df.return_turbidity * (df.phase_elapse_end <= 40)
+    df['caustic_flow_end'] = df.return_flow * df.return_caustic * df.return_turbidity * (df.phase_elapse_end <= 40)
+    df['acid_flow_end'] = df.return_flow * df.return_acid * df.return_turbidity * (df.phase_elapse_end <= 40)
+    df['recovery_water_flow_end'] = df.return_flow * df.return_recovery_water * df.return_turbidity * (df.phase_elapse_end <= 40)
+    df['drain_flow_end'] = df.return_flow * df.return_drain * df.return_turbidity * (df.phase_elapse_end <= 40)
 
     # Phase-level features
     group_cols = ['process_id', 'object_id', 'pipeline', 'phase']

@@ -149,12 +149,12 @@ def build_models(model_type, processed_train_data, processed_val_data, params, r
 
 def calculate_validation_metrics(validation_results):
     test_iterations_pre_rinse = int(
-        round(validation_results[validation_results.Model_Type == 'pre_rinse'].Best_Num_Iters.mean()))
-    test_iterations_acid = int(round(validation_results[validation_results.Model_Type == 'acid'].Best_Num_Iters.mean()))
+        round(validation_results[validation_results.Model_Type == 'pre_rinse'].Best_Num_Iters.median()))
+    test_iterations_acid = int(round(validation_results[validation_results.Model_Type == 'acid'].Best_Num_Iters.median()))
     test_iterations_caustic = int(
-        round(validation_results[validation_results.Model_Type == 'caustic'].Best_Num_Iters.mean()))
+        round(validation_results[validation_results.Model_Type == 'caustic'].Best_Num_Iters.median()))
     test_iterations_int_rinse = int(
-        round(validation_results[validation_results.Model_Type == 'int_rinse'].Best_Num_Iters.mean()))
+        round(validation_results[validation_results.Model_Type == 'int_rinse'].Best_Num_Iters.median()))
     test_iterations = {'pre_rinse': test_iterations_pre_rinse,
                        'caustic': test_iterations_caustic,
                        'int_rinse': test_iterations_int_rinse,

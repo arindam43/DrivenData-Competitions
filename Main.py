@@ -26,14 +26,17 @@ from Predict import predict_test_values
 # Additionally, determine start times for each process
 if 'raw_data' not in locals():
     print('Reading in data sets...')
-    raw_data = pd.read_csv("train_values.csv")
+    raw_data = pd.read_pickle("train_values.pkl")
     labels = pd.read_csv('train_labels.csv')
-    test_data = pd.read_csv("test_values.csv")
+    test_data = pd.read_pickle("test_values.pkl")
     print('Successfully read in data sets.')
 
     # Preprocessing - convert "intermediate rinse" to 'int_rinse'
     raw_data.phase[raw_data.phase == 'intermediate_rinse'] = 'int_rinse'
     test_data.phase[test_data.phase == 'intermediate_rinse'] = 'int_rinse'
+
+    # Preprocessing - remove processes with objects that aren't in test set
+    #raw_data = raw_data[raw_data.object_id.isin(test_data.object_id)]
 
     # Determine start times for train and test data
     # Necessary to properly do walk forward validation
@@ -44,6 +47,11 @@ if 'raw_data' not in locals():
 else:
     print('Data already read in, skipping data read and start time calculations.')
 
+if 'train_eda' not in locals():
+    train_eda = raw_data.describe(percentiles=[0.01, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.99])
+
+if 'test_eda' not in locals():
+    test_eda = test_data.describe(percentiles=[0.01, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.99])
 
 # Create walk forward train/validation splits
 validation_results = pd.DataFrame(columns=['Model_Type', 'Train_Ratio', 'Best_MAPE', 'Best_Num_Iters'])
@@ -68,8 +76,8 @@ for train_ratio in train_val_ratios:
     processed_val_data = engineer_features(raw_val_data, train_start_times)
     print('Successfully engineered features.')
 
-    # Drop features that make no sense (produce all 0 or nan)
-    keep_cols = processed_train_data.apply(lambda x: ((x == 0) | (x.isnull())).sum() / len(x)) <= 0.995
+    # Drop features that make no sense (produce mostly 0 or nan)
+    keep_cols = processed_train_data.apply(lambda x: ((x == 0) | (x.isnull())).sum() / len(x)) <= 0.98
     processed_train_data = processed_train_data[list(keep_cols[keep_cols].index)]
     processed_val_data = processed_val_data[list(keep_cols[keep_cols].index)]
 
@@ -84,6 +92,7 @@ for train_ratio in train_val_ratios:
     # Bring in labels for train and validation data
     processed_train_data = processed_train_data.merge(labels, on='process_id')
     processed_val_data = processed_val_data.merge(labels, on='process_id')
+    processed_train_data.to_csv('modeling_data.csv')
 
     # Convert object id to category
     # Ensure that categories are consistent across training, validation, and test sets
@@ -98,14 +107,14 @@ for train_ratio in train_val_ratios:
                        'caustic': list(filter(lambda x: re.search(r'(?=.*pre_rinse|.*caustic)', x), list(processed_train_data.columns))) + non_phase_cols,
                        'int_rinse': list(filter(lambda x: re.search(r'(?=.*pre_rinse|.*caustic|.*int_)', x), list(processed_train_data.columns))) + non_phase_cols,
                        'acid': list(filter(lambda x: re.search(r'(?=.*pre_rinse|.*caustic|.*int_|.*acid)', x), list(processed_train_data.columns))) + non_phase_cols
-                       #'acid': list(set(processed_train_data.columns) - set(['object_id', 'process_id', 'pipeline', 'day_number', 'timestamp', response])) + non_phase_cols
+                       #'acid': list(set(processed_train_data.columns) - set(['object_id', 'process_id', 'pipeline', 'day_number', 'start_time', response])) + non_phase_cols
                        }
 
     # specify your configurations as a dict
     params = {'pre_rinse': {'boosting_type': 'gbdt', 'objective': 'mape', 'num_leaves': 31, 'learning_rate': 0.02, 'verbose': -1, 'min_data_in_leaf': 25},
-              'caustic': {'boosting_type': 'gbdt', 'objective': 'mape', 'num_leaves': 63, 'learning_rate': 0.02, 'verbose': -1, 'min_data_in_leaf': 25},
-              'int_rinse': {'boosting_type': 'gbdt', 'objective': 'mape', 'num_leaves': 63, 'learning_rate': 0.02, 'verbose': -1, 'min_data_in_leaf': 25},
-              'acid': {'boosting_type': 'gbdt', 'objective': 'mape', 'num_leaves': 70, 'learning_rate': 0.02, 'verbose': -1, 'min_data_in_leaf': 25},
+              'caustic': {'boosting_type': 'gbdt', 'objective': 'mape', 'num_leaves': 48, 'learning_rate': 0.02, 'verbose': -1, 'min_data_in_leaf': 25, 'feature_fraction': 0.9},
+              'int_rinse': {'boosting_type': 'gbdt', 'objective': 'mape', 'num_leaves': 63, 'learning_rate': 0.02, 'verbose': -1, 'min_data_in_leaf': 25, 'feature_fraction': 0.8},
+              'acid': {'boosting_type': 'gbdt', 'objective': 'mape', 'num_leaves': 70, 'learning_rate': 0.02, 'verbose': -1, 'min_data_in_leaf': 25, 'feature_fraction': 0.7},
     }
 
     for model_type in cols_to_include.keys():
