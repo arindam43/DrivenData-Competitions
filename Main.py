@@ -36,7 +36,7 @@ if 'raw_data' not in locals():
     test_data.phase[test_data.phase == 'intermediate_rinse'] = 'int_rinse'
 
     # Preprocessing - remove processes with objects that aren't in test set
-    #raw_data = raw_data[raw_data.object_id.isin(test_data.object_id)]
+    raw_data = raw_data[raw_data.object_id.isin(test_data.object_id)]
 
     # Determine start times for train and test data
     # Necessary to properly do walk forward validation
