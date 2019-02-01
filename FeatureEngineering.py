@@ -106,7 +106,6 @@ def engineer_features(df, timestamps):
     df_final_output = df_final_output.merge(timestamps, on='process_id')
     df_final_output = df_final_output.sort_values(by=['object_id', 'start_time'])
 
-
     # df_final_output['hour_of_day'] = df_final_output.timestamp.dt.hour * 60 + df_final_output.timestamp.dt.minute
 
     # df_final_output['weekday_name'] = df_final_output.timestamp.dt.dayofweek

@@ -1,4 +1,5 @@
 import pandas as pd
+import numpy as np
 import sys
 import os
 from importlib import reload
@@ -34,9 +35,19 @@ def predict_test_values(raw_data, train_start_times, test_data, test_start_times
     processed_test_data = engineer_features(test_data, test_start_times)
     processed_test_data = processed_test_data.sort_values(by='process_id')
 
+    # Clipping experiments
+    quantiles = (processed_full_train_data.groupby('object_id')[response].quantile(0.9) * 1.5).reset_index()
+    quantiles.columns = ['object_id', 'response']
+    processed_full_train_data = processed_full_train_data.merge(quantiles, on='object_id')
+    processed_full_train_data[response] = np.where(processed_full_train_data.response < processed_full_train_data[response],
+                                                   processed_full_train_data.response,
+                                                   processed_full_train_data[response])
+
     # Align categories across full training data and test set
     processed_full_train_data.object_id = processed_full_train_data.object_id.astype('category')
     processed_test_data.object_id = processed_test_data.object_id.astype('category', categories=processed_full_train_data.object_id.cat.categories)
+    processed_full_train_data.to_csv('full_modeling_data.csv')
+    processed_test_data.to_csv('processed_test_data.csv')
 
     for model_type in cols_to_include.keys():
         y_test_pred = build_test_models(model_type, processed_full_train_data, processed_test_data,

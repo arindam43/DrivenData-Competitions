@@ -94,6 +94,14 @@ for train_ratio in train_val_ratios:
     processed_val_data = processed_val_data.merge(labels, on='process_id')
     processed_train_data.to_csv('modeling_data.csv')
 
+    # Clipping experiments
+    quantiles = (processed_train_data.groupby('object_id')[response].quantile(0.9) * 1.5).reset_index()
+    quantiles.columns = ['object_id', 'response']
+    processed_train_data = processed_train_data.merge(quantiles, on='object_id')
+    processed_train_data[response] = np.where(processed_train_data.response < processed_train_data[response],
+                                              processed_train_data.response,
+                                              processed_train_data[response])
+
     # Convert object id to category
     # Ensure that categories are consistent across training, validation, and test sets
     for col in ['object_id']:
@@ -124,6 +132,7 @@ for train_ratio in train_val_ratios:
 test_iterations = calculate_validation_metrics(validation_results)
 
 processed_train_data = processed_train_data.sort_values(by=['object_id', 'start_time'])
+
 
 # Train on full data and make predictions
 print('')
