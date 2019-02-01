@@ -41,7 +41,7 @@ def predict_test_values(raw_data, train_start_times, test_data, test_start_times
     processed_full_train_data = processed_full_train_data.merge(quantiles, on='object_id')
     processed_full_train_data[response] = np.where(processed_full_train_data.response < processed_full_train_data[response],
                                                    processed_full_train_data.response,
-                                                   processed_full_train_data[response])
+                                                   processed_full_train_data[response]) 
 
     # Align categories across full training data and test set
     processed_full_train_data.object_id = processed_full_train_data.object_id.astype('category')
