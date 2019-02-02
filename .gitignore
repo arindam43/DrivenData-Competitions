@@ -1,0 +1,7 @@
+*.csv
+*.twb
+__pycache__/
+EDA/
+Predictions/
+.idea/
+*.pkl

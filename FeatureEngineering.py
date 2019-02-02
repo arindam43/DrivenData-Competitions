@@ -3,19 +3,11 @@ import numpy as np
 import re
 
 
-def calculate_start_times(df):
-    output = pd.DataFrame(df.groupby(['process_id']).timestamp.min()).reset_index()
-    output.timestamp = output.timestamp.astype('datetime64[ns]')
-    output['day_number'] = output.timestamp.dt.dayofyear - 51
-    output.columns = ['process_id', 'start_time', 'day_number']
 
-    return output
-
-
-def calculate_features(df_groupby, level = 'phase'):
+def calculate_features(df, df_groupby, group_cols, level = 'phase'):
     if level == 'phase':
         output = pd.DataFrame({'phase_duration': (df_groupby.timestamp.max() -
-                                                df_groupby.timestamp.min()).astype('timedelta64[s]'),
+                                                  df_groupby.timestamp.min()).astype('timedelta64[s]'),
 
                                'caus_flow': df_groupby.caustic_flow.sum(),
                                'ac_flow': df_groupby.acid_flow.sum(),
@@ -35,15 +27,14 @@ def calculate_features(df_groupby, level = 'phase'):
                                'obj_low_level': df_groupby.object_low_level.sum() / (df_groupby.timestamp.max() -
                                                                                      df_groupby.timestamp.min()).astype('timedelta64[s]'),
                                'lsh_caus': df_groupby.tank_lsh_caustic.sum() / (df_groupby.timestamp.max() -
-                                                                              df_groupby.timestamp.min()).astype('timedelta64[s]')
+                                                                                df_groupby.timestamp.min()).astype('timedelta64[s]')
                             }).reset_index()
     else:
         output = pd.DataFrame({'phase_duration': (df_groupby.timestamp.max() -
-                                         df_groupby.timestamp.min()).astype('timedelta64[s]'),
+                                                  df_groupby.timestamp.min()).astype('timedelta64[s]'),
 
-                               'total_turbidity': df_groupby.total_turbidity.sum(),
+                               'total_turbidity_acid': df_groupby.total_turbidity.sum(),
                                'total_end_turbidity': df_groupby.total_flow_end.sum(),
-                               'total_min_temp': df_groupby.temperature.min(),
 
                                'obj_low_level': df_groupby.object_low_level.sum() / (df_groupby.timestamp.max() -
                                                                                      df_groupby.timestamp.min()).astype('timedelta64[s]'),
@@ -55,34 +46,11 @@ def calculate_features(df_groupby, level = 'phase'):
 
 
 def engineer_features(df, timestamps):
-    df.timestamp = df.timestamp.astype('datetime64[s]')
-    df = df.merge(timestamps, on='process_id')
-
-    # Row level features
-    df['return_flow'] = np.maximum(0, df.return_flow)
-    df['total_turbidity'] = df.return_flow * df.return_turbidity
-    df['caustic_flow'] = df.return_flow * df.return_caustic * df.return_turbidity
-    df['acid_flow'] = df.return_flow * df.return_acid * df.return_turbidity
-    df['recovery_water_flow'] = df.return_flow * df.return_recovery_water * df.return_turbidity
-    df['drain_flow'] = df.return_flow * df.return_drain * df.return_turbidity
-
-    df['caustic_temp'] = df.return_temperature * df.return_caustic
-    df['acid_temp'] = df.return_temperature * df.return_acid
-    df['recovery_water_temp'] = df.return_temperature * df.return_recovery_water
-    df['drain_temp'] = df.return_temperature * df.return_drain
-
-    df['phase_elapse_end'] = (df.groupby(['process_id', 'phase']).timestamp.transform('max') - df.timestamp).dt.seconds
-    df['total_flow_end'] = df.return_flow * df.return_turbidity * (df.phase_elapse_end <= 40)
-    df['caustic_flow_end'] = df.return_flow * df.return_caustic * df.return_turbidity * (df.phase_elapse_end <= 40)
-    df['acid_flow_end'] = df.return_flow * df.return_acid * df.return_turbidity * (df.phase_elapse_end <= 40)
-    df['recovery_water_flow_end'] = df.return_flow * df.return_recovery_water * df.return_turbidity * (df.phase_elapse_end <= 40)
-    df['drain_flow_end'] = df.return_flow * df.return_drain * df.return_turbidity * (df.phase_elapse_end <= 40)
-
     # Phase-level features
     group_cols = ['process_id', 'object_id', 'pipeline', 'phase']
     df_groupby = df.groupby(group_cols)
 
-    df_output_phase = calculate_features(df_groupby)
+    df_output_phase = calculate_features(df, df_groupby, group_cols)
 
     df_output_phase = pd.pivot_table(df_output_phase,
                                      index=['process_id', 'object_id', 'pipeline'],
@@ -93,12 +61,12 @@ def engineer_features(df, timestamps):
     df_output_phase.columns = df_output_phase.columns.str.replace(' ', '_')
 
     # Drop columns that don't make sense
-
+    #
     # Process-level aggregations of phase-level features
     group_cols = ['process_id', 'object_id', 'pipeline']
     df_groupby = df.groupby(group_cols)
 
-    df_output_process = calculate_features(df_groupby)
+    df_output_process = calculate_features(df, df_groupby, group_cols)
 
     df_final_output = df_output_phase.merge(df_output_process, on=group_cols)
 
@@ -128,7 +96,43 @@ def remove_outliers(processed_train_data):
 
     return processed_train_data
 
-#
-# sort_col = 'total_return_flow'
-# processed_test_data = processed_test_data.sort_values(by=sort_col)
-# processed_train_data = processed_train_data.sort_values(by=sort_col)
+
+def create_model_datasets(df_train, df_test, start_times, labels, metadata, path, type = 'validation'):
+
+    # Engineer phase-level features on train, validation, and test sets
+    print('Engineering features on train, ' + type + ' sets...')
+    processed_train_data = engineer_features(df_train, start_times)
+    processed_val_data = engineer_features(df_test, start_times)
+    print('Successfully engineered features.')
+
+    # Drop features that make no sense (produce mostly 0 or nan)
+    keep_cols = processed_train_data.apply(lambda x: ((x == 0) | (x.isnull())).sum() / len(x)) <= 0.98
+    processed_train_data = processed_train_data[list(keep_cols[keep_cols].index)]
+    processed_val_data = processed_val_data[list(keep_cols[keep_cols].index)]
+
+    # Remove outliers from training data
+    processed_train_data = remove_outliers(processed_train_data)
+
+    # Bring in labels and metadata for train and validation data
+    processed_train_data = processed_train_data.merge(labels, on='process_id').merge(metadata, on='process_id')
+    processed_val_data = processed_val_data.merge(metadata, on='process_id')
+    if type == 'validation':
+        processed_val_data = processed_val_data.merge(labels, on='process_id')
+
+    # Write datasets out to local
+    if type == 'validation':
+        processed_train_data.to_csv(path + 'modeling_data.csv')
+    elif type == 'test':
+        processed_train_data.to_csv(path + 'full_modeling_data.csv')
+        processed_val_data.to_csv(path + 'processed_test_data.csv')
+
+    # Convert object id to category
+    # Ensure that categories are consistent across training, validation, and test sets
+    for col in ['object_id']:
+        processed_train_data[col] = processed_train_data[col].astype('category')
+        processed_val_data[col] = processed_val_data[col].astype('category', categories=processed_train_data[
+            'object_id'].cat.categories)
+
+    processed_val_data = processed_val_data.sort_values(by='process_id')
+
+    return processed_train_data, processed_val_data
