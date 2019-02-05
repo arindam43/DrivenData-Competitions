@@ -10,7 +10,7 @@ def create_model_datasets(df_train, df_test, start_times, labels, metadata, path
     print('Successfully engineered features.')
 
     # Drop features that make no sense (produce mostly 0 or nan)
-    keep_cols = processed_train_data.apply(lambda x: ((x == 0) | (x.isnull())).sum() / len(x)) <= 0.98
+    keep_cols = processed_train_data.apply(lambda x: (x.isnull()).sum() / len(x)) <= 0.8
     processed_train_data = processed_train_data[list(keep_cols[keep_cols].index)]
     processed_val_data = processed_val_data[list(keep_cols[keep_cols].index)]
 
@@ -43,27 +43,40 @@ def create_model_datasets(df_train, df_test, start_times, labels, metadata, path
 
 
 def engineer_features(df, timestamps):
-    # Phase-level features
-    group_cols = ['process_id', 'object_id', 'pipeline', 'phase']
+    # Return-phase-level features
+    group_cols = ['process_id', 'object_id', 'pipeline', 'return_phase']
     df_groupby = df.groupby(group_cols)
 
-    df_output_phase = calculate_features(df, df_groupby, group_cols)
+    df_output_phase = calculate_features(df, df_groupby, group_cols, level='return_phase')
 
     df_output_phase = pd.pivot_table(df_output_phase,
                                      index=['process_id', 'object_id', 'pipeline'],
-                                     columns='phase',
+                                     columns='return_phase',
                                      values=list(set(df_output_phase.columns) - set(group_cols))).reset_index()
 
     df_output_phase.columns = [' '.join(col).strip() for col in df_output_phase.columns.values]
     df_output_phase.columns = df_output_phase.columns.str.replace(' ', '_')
 
-    # Drop columns that don't make sense
-    #
+    # Phase-level features
+    group_cols = ['process_id', 'object_id', 'pipeline', 'phase']
+    df_groupby = df.groupby(group_cols)
+    df_output_phase2 = calculate_features(df, df_groupby, group_cols, level='phase')
+
+    df_output_phase2 = pd.pivot_table(df_output_phase2,
+                                      index=['process_id', 'object_id', 'pipeline'],
+                                      columns='phase',
+                                      values=list(set(df_output_phase2.columns) - set(group_cols))).reset_index()
+
+    df_output_phase2.columns = [' '.join(col).strip() for col in df_output_phase2.columns.values]
+    df_output_phase2.columns = df_output_phase2.columns.str.replace(' ', '_')
+
+    df_output_phase = df_output_phase2.merge(df_output_phase, on=['process_id', 'object_id', 'pipeline'])
+
     # Process-level aggregations of phase-level features
     group_cols = ['process_id', 'object_id', 'pipeline']
     df_groupby = df.groupby(group_cols)
 
-    df_output_process = calculate_features(df, df_groupby, group_cols)
+    df_output_process = calculate_features(df, df_groupby, group_cols, level='process')
 
     df_final_output = df_output_phase.merge(df_output_process, on=group_cols)
 
@@ -86,43 +99,27 @@ def engineer_features(df, timestamps):
     return df_final_output
 
 
-def calculate_features(df, df_groupby, group_cols, level='phase'):
-    if level == 'phase':
+def calculate_features(df, df_groupby, group_cols, level):
+    if level == 'return_phase':
+        output = pd.DataFrame({'total_flow': df_groupby.total_turbidity.sum(),
+                               }).reset_index()
+    elif level == 'phase':
         output = pd.DataFrame({'phase_duration': (df_groupby.timestamp.max() -
                                                   df_groupby.timestamp.min()).astype('timedelta64[s]'),
-
-                               'caus_flow': df_groupby.caustic_flow.sum(),
-                               'ac_flow': df_groupby.acid_flow.sum(),
-                               'rec_water_flow': df_groupby.recovery_water_flow.sum(),
-                               'drain_flow': df_groupby.drain_flow.sum(),
-
-                               'caus_flow_end': df_groupby.caustic_flow_end.sum(),
-                               'ac_flow_end': df_groupby.acid_flow_end.sum(),
-                               'rec_water_flow_end': df_groupby.recovery_water_flow_end.sum(),
-                               'drain_flow_end': df_groupby.drain_flow_end.sum(),
-
-                               'caus_temp': df_groupby.caustic_temp.min(),
-                               'ac_temp': df_groupby.acid_temp.min(),
-                               'rec_water_temp': df_groupby.recovery_water_temp.min(),
-                               'drain_temp': df_groupby.drain_temp.min(),
-
+                               'row_count': df_groupby.phase.count(),
+                               'end_flow': df_groupby.end_turbidity.sum(),
+                               'min_temp': df_groupby.return_temperature.min(),
                                'obj_low_level': df_groupby.object_low_level.sum() / (df_groupby.timestamp.max() -
-                                                                                     df_groupby.timestamp.min()).astype('timedelta64[s]'),
+                                                                                     df_groupby.timestamp.min()).astype(
+                                   'timedelta64[s]'),
                                'lsh_caus': df_groupby.tank_lsh_caustic.sum() / (df_groupby.timestamp.max() -
-                                                                                df_groupby.timestamp.min()).astype('timedelta64[s]')
-                            }).reset_index()
+                                                                                df_groupby.timestamp.min()).astype(
+                                   'timedelta64[s]')
+                               }).reset_index()
     else:
         output = pd.DataFrame({'phase_duration': (df_groupby.timestamp.max() -
-                                                  df_groupby.timestamp.min()).astype('timedelta64[s]'),
-
-                               'total_turbidity_acid': df_groupby.total_turbidity.sum(),
-                               'total_end_turbidity': df_groupby.total_flow_end.sum(),
-
-                               'obj_low_level': df_groupby.object_low_level.sum() / (df_groupby.timestamp.max() -
-                                                                                     df_groupby.timestamp.min()).astype('timedelta64[s]'),
-                               'lsh_caus': df_groupby.tank_lsh_caustic.sum() / (df_groupby.timestamp.max() -
-                                                                               df_groupby.timestamp.min()).astype('timedelta64[s]')
-                      }).reset_index()
+                                                  df_groupby.timestamp.min()).astype('timedelta64[s]')
+                               }).reset_index()
 
     return output
 

@@ -64,21 +64,23 @@ for train_ratio in train_val_ratios:
     # Process the raw data to create model-ready datasets
     # Features engineering, aggregation to process_id level, outlier removal
     processed_train_data, \
-    processed_val_data = create_model_datasets(raw_train_data, raw_val_data, start_times, labels, metadata,
-                                               path, val_or_test='validation')
+        processed_val_data = create_model_datasets(raw_train_data, raw_val_data, start_times, labels, metadata,
+                                                   path, val_or_test='validation')
 
     # For each of the four models, identify which columns should be kept from overall set
     # Simulates data censoring in test data
     non_phase_cols_short = ['object_id', 'recipe_type']
     non_phase_cols_full = ['object_id']
-    cols_to_include = {'pre_rinse': list(filter(lambda x: re.search(r'(?=.*pre_rinse)', x),
-                                                list(processed_train_data.columns))) + non_phase_cols_short,
-                       'caustic': list(filter(lambda x: re.search(r'(?=.*pre_rinse|.*caustic)', x),
-                                              list(processed_train_data.columns))) + non_phase_cols_short,
-                       'int_rinse': list(filter(lambda x: re.search(r'(?=.*pre_rinse|.*caustic|.*int_)', x),
-                                                list(processed_train_data.columns))) + non_phase_cols_full,
-                       'acid': list(filter(lambda x: re.search(r'(?=.*pre_rinse|.*caustic|.*int_|.*acid)', x),
-                                           list(processed_train_data.columns))) + non_phase_cols_full
+    none_cols = set(filter(lambda x: re.search(r'(?=.*none|row_count.*)', x),
+                                               list(processed_train_data.columns)))
+    cols_to_include = {'pre_rinse': list(set(filter(lambda x: re.search(r'(?=.*pre_rinse)', x),
+                                             list(processed_train_data.columns))) - none_cols) + non_phase_cols_short,
+                       'caustic': list(set(filter(lambda x: re.search(r'(?=.*pre_rinse|.*caustic)', x),
+                                           list(processed_train_data.columns))) - none_cols) + non_phase_cols_short,
+                       'int_rinse': list(set(filter(lambda x: re.search(r'(?=.*pre_rinse|.*caustic|.*int)', x),
+                                             list(processed_train_data.columns))) - none_cols) + non_phase_cols_full,
+                       'acid': list(set(filter(lambda x: re.search(r'(?=.*pre_rinse|.*caustic|.*int_|.*acid)', x),
+                                        list(processed_train_data.columns))) - none_cols) + non_phase_cols_full
                        #'acid': list(set(processed_train_data.columns) - set(['object_id', 'process_id', 'pipeline', 'day_number', 'start_time', response])) + non_phase_cols
                        }
 
@@ -86,9 +88,9 @@ for train_ratio in train_val_ratios:
 
     # Hyperparameter tuning - simple grid search
     if modeling_approach == 'parameter_tuning':
-        leaves_tuning = [31, 40, 50, 63, 70, 80]
+        leaves_tuning = [48, 63, 80, 127]
         min_data_in_leaf_tuning = [25]
-        feature_fraction_tuning = [0.6, 0.7, 0.8, 0.9, 1]
+        feature_fraction_tuning = [0.7, 0.8, 0.9, 1]
         tuning_grid = list(itertools.product(leaves_tuning, min_data_in_leaf_tuning, feature_fraction_tuning))
         counter = 1
 
@@ -125,16 +127,16 @@ for train_ratio in train_val_ratios:
         tuning_params = ('NA', 'NA', 'NA')
         # specify your configurations as a dict
         params = {'pre_rinse': {'boosting_type': 'gbdt', 'objective': 'mape', 'num_leaves': 31,
-                                'learning_rate': 0.01, 'verbose': -1, 'min_data_in_leaf': 25,
+                                'learning_rate': 0.01, 'verbose': -1, 'min_data_in_leaf': 20,
                                 'feature_fraction': 1},
-                  'caustic': {'boosting_type': 'gbdt', 'objective': 'mape', 'num_leaves': 48,
-                              'learning_rate': 0.01, 'verbose': -1, 'min_data_in_leaf': 25,
+                  'caustic': {'boosting_type': 'gbdt', 'objective': 'mape', 'num_leaves': 63,
+                              'learning_rate': 0.01, 'verbose': -1, 'min_data_in_leaf': 20,
                               'feature_fraction': 0.9},
                   'int_rinse': {'boosting_type': 'gbdt', 'objective': 'mape', 'num_leaves': 63,
-                                'learning_rate': 0.01, 'verbose': -1, 'min_data_in_leaf': 25,
+                                'learning_rate': 0.01, 'verbose': -1, 'min_data_in_leaf': 20,
                                 'feature_fraction': 0.8},
-                  'acid': {'boosting_type': 'gbdt', 'objective': 'mape', 'num_leaves': 70,
-                           'learning_rate': 0.01, 'verbose': -1, 'min_data_in_leaf': 25,
+                  'acid': {'boosting_type': 'gbdt', 'objective': 'mape', 'num_leaves': 80,
+                           'learning_rate': 0.01, 'verbose': -1, 'min_data_in_leaf': 20,
                            'feature_fraction': 0.7}}
 
         for model_type in cols_to_include.keys():
@@ -150,6 +152,7 @@ validation_results.Best_Num_Iters = validation_results.Best_Num_Iters.astype(int
 validation_summary = validation_results.groupby(['Model_Type', 'Num_Leaves', 'Min_Data_In_Leaf', 'Feature_Fraction']).\
     agg({'Best_MAPE': np.mean, 'Best_Num_Iters': np.median}).reset_index()
 validation_summary.Best_Num_Iters = validation_summary.Best_Num_Iters.astype(int)
+validation_summary = validation_summary.loc[validation_summary.groupby('Model_Type')['Best_MAPE'].idxmin()]
 
 end_time = time.time()
 print('Total time taken for hyperparameter tuning: ' + str(datetime.timedelta(seconds=end_time - start_time)))

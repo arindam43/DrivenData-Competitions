@@ -7,11 +7,10 @@ import matplotlib
 
 def build_lgbm_validation_datasets(train_data, val_data, response, cols_to_include=None):
     # Model training
-    drop_cols = [response]
-    val_data_acid = val_data[val_data.phase_duration_acid.notnull()]
-    val_data_int_rinse = val_data[val_data.phase_duration_int_rinse.notnull()]
-    val_data_caustic = val_data[val_data.phase_duration_caustic.notnull()]
-    val_data_pre_rinse = val_data[val_data.phase_duration_pre_rinse.notnull()]
+    val_data_acid = val_data[val_data.row_count_acid.notnull()]
+    val_data_int_rinse = val_data[val_data.row_count_int_rinse.notnull()]
+    val_data_caustic = val_data[val_data.row_count_caustic.notnull()]
+    val_data_pre_rinse = val_data[val_data.row_count_pre_rinse.notnull()]
 
     y_train = train_data.ix[:, response]
     y_val_acid = val_data_acid.ix[:, response]
@@ -49,15 +48,15 @@ def build_lgbm_test_datasets(full_train_data, test_data, response, cols_to_drop=
     drop_cols = [response]
     cols_to_include = cols_to_include + ['process_id']
 
-    test_data_acid = test_data[test_data.phase_duration_acid.notnull()]
-    test_data_int_rinse = test_data[test_data.phase_duration_acid.isnull() &
-                                    test_data.phase_duration_int_rinse.notnull()]
-    test_data_caustic = test_data[test_data.phase_duration_acid.isnull() &
-                                  test_data.phase_duration_int_rinse.isnull() &
-                                  test_data.phase_duration_caustic.notnull()]
-    test_data_pre_rinse = test_data[test_data.phase_duration_acid.isnull() &
-                                    test_data.phase_duration_int_rinse.isnull() &
-                                    test_data.phase_duration_caustic.isnull()]
+    test_data_acid = test_data[test_data.row_count_acid.notnull()]
+    test_data_int_rinse = test_data[test_data.row_count_acid.isnull() &
+                                    test_data.row_count_int_rinse.notnull()]
+    test_data_caustic = test_data[test_data.row_count_acid.isnull() &
+                                  test_data.row_count_int_rinse.isnull() &
+                                  test_data.row_count_caustic.notnull()]
+    test_data_pre_rinse = test_data[test_data.row_count_acid.isnull() &
+                                    test_data.row_count_int_rinse.isnull() &
+                                    test_data.row_count_caustic.isnull()]
 
     y_train = full_train_data.ix[:, response]
 
@@ -110,13 +109,13 @@ def build_models(model_type, processed_train_data, processed_val_data, params, r
                           num_boost_round=5000,
                           valid_sets=modeling_data['eval_' + model_type],
                           verbose_eval=False,
-                          early_stopping_rounds=100
+                          early_stopping_rounds=30
                          )
 
     modeling_data = build_lgbm_validation_datasets(processed_train_data, processed_val_data, response,
                                                    cols_to_include=cols_to_include)
 
-    if train_ratio == max_train_ratio:
+    if train_ratio == max_train_ratio and model_type == 'acid':
         #lgb.plot_importance(gbm_train)
 
         # explain the model's predictions using SHAP values

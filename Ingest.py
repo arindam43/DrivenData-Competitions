@@ -37,18 +37,18 @@ def preprocess_data(df, test_data, start_times):
     df = df.merge(start_times, on='process_id')
 
     # Row level features
+    df['return_phase'] = df.phase + '_' + np.where(df.return_drain == True, 'drain',
+                                          np.where(df.return_caustic == True, 'caus',
+                                          np.where(df.return_acid == True, 'ac',
+                                          np.where(df.return_recovery_water == True, 'rec_water', 'none'))))
+
     df['return_flow'] = np.maximum(0, df.return_flow)
     df['total_turbidity'] = df.return_flow * df.return_turbidity
     df['phase_elapse_end'] = (
             df.groupby(['process_id', 'phase']).timestamp.transform('max') - df.timestamp).dt.seconds
-
-    # Columns for specific stages - e.g 'caustic_flow' = flow that occurred when the caustic return line was open
-    # Simplifies aggregation calculations later on
-    for phase in['caustic', 'acid', 'recovery_water', 'drain']:
-        df[phase + '_flow'] = df['return_' + phase] * df.return_flow * df.return_turbidity
-        df[phase + '_temp'] = df['return_' + phase] * df.return_temperature
-        df[phase + '_flow_end'] = df['return_' + phase] * df.return_flow * df.return_turbidity * (
-            df.phase_elapse_end <= 40)
+    df['end_turbidity'] = df.total_turbidity * (df.phase_elapse_end <= 40)
+    df['low_flow_flag'] = df.return_flow < 10000
+    df['very_low_flow_flag'] = df.return_flow < 1000
 
     print('Successfully calculated process-timestamp-level features.')
     print('')
