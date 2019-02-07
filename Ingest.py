@@ -42,13 +42,17 @@ def preprocess_data(df, test_data, start_times):
                                           np.where(df.return_acid == True, 'ac',
                                           np.where(df.return_recovery_water == True, 'rec_water', 'none'))))
 
+    normal_phases = list(df.return_phase.value_counts()[df.return_phase.value_counts() > 400000].reset_index()['index'])
+    df['return_phase'] = np.where(df.return_phase.isin(normal_phases), df.return_phase, 'other')
+
     df['return_flow'] = np.maximum(0, df.return_flow)
-    df['total_turbidity'] = df.return_flow * df.return_turbidity
+    df['total_flow'] = df.return_flow * df.return_turbidity
     df['phase_elapse_end'] = (
             df.groupby(['process_id', 'phase']).timestamp.transform('max') - df.timestamp).dt.seconds
-    df['end_turbidity'] = df.total_turbidity * (df.phase_elapse_end <= 40)
+    df['end_flow'] = df.total_flow * (df.phase_elapse_end <= 60)
+    df['end_turb'] = df.return_turbidity * (df.phase_elapse_end <= 60)
     df['low_flow_flag'] = df.return_flow < 10000
-    df['very_low_flow_flag'] = df.return_flow < 1000
+    df['very_low_flow_flag'] = df.return_flow < 5000
 
     print('Successfully calculated process-timestamp-level features.')
     print('')

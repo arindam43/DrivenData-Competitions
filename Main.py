@@ -77,42 +77,43 @@ for train_ratio in train_val_ratios:
                                              list(processed_train_data.columns))) - none_cols) + non_phase_cols_short,
                        'caustic': list(set(filter(lambda x: re.search(r'(?=.*pre_rinse|.*caustic)', x),
                                            list(processed_train_data.columns))) - none_cols) + non_phase_cols_short,
-                       'int_rinse': list(set(filter(lambda x: re.search(r'(?=.*pre_rinse|.*caustic|.*int)', x),
+                       'int_rinse': list(set(filter(lambda x: re.search(r'(?=.*pre_rinse|.*caustic|.*int_rinse)', x),
                                              list(processed_train_data.columns))) - none_cols) + non_phase_cols_full,
-                       'acid': list(set(filter(lambda x: re.search(r'(?=.*pre_rinse|.*caustic|.*int_|.*acid)', x),
+                       'acid': list(set(filter(lambda x: re.search(r'(?=.*pre_rinse|.*caustic|.*int_rinse|.*acid|.*other)', x),
                                         list(processed_train_data.columns))) - none_cols) + non_phase_cols_full
                        #'acid': list(set(processed_train_data.columns) - set(['object_id', 'process_id', 'pipeline', 'day_number', 'start_time', response])) + non_phase_cols
                        }
 
-    modeling_approach = 'single_model'
+    modeling_approach = 'parameter_tuning'
 
     # Hyperparameter tuning - simple grid search
     if modeling_approach == 'parameter_tuning':
-        leaves_tuning = [48, 63, 80, 127]
+        leaves_tuning = [31, 48, 63, 70, 80]
         min_data_in_leaf_tuning = [25]
-        feature_fraction_tuning = [0.7, 0.8, 0.9, 1]
+        feature_fraction_tuning = [0.8, 0.9, 1]
         tuning_grid = list(itertools.product(leaves_tuning, min_data_in_leaf_tuning, feature_fraction_tuning))
         counter = 1
 
         for tuning_params in tuning_grid:
             print('')
-            print('Hyperparameter tuning, model ' + str(counter) + ' of ' + str(len(tuning_grid)) + '...')
+            print('Hyperparameter tuning, model ' + str(counter) + ' of ' + str(len(tuning_grid)) + ', train ratio = '
+                  + str(train_ratio) + '...')
             print('num_leaves: ' + str(tuning_params[0]))
             print('min_data_in_leaf: ' + str(tuning_params[1]))
             print('feature_fraction: ' + str(tuning_params[2]))
 
             # specify your configurations as a dict
             params = {'pre_rinse': {'boosting_type': 'gbdt', 'objective': 'mape', 'num_leaves': tuning_params[0],
-                                    'learning_rate': 0.02, 'verbose': -1, 'min_data_in_leaf': tuning_params[1],
+                                    'learning_rate': 0.03, 'verbose': -1, 'min_data_in_leaf': tuning_params[1],
                                     'feature_fraction': tuning_params[2]},
                       'caustic': {'boosting_type': 'gbdt', 'objective': 'mape', 'num_leaves': tuning_params[0],
-                                  'learning_rate': 0.02, 'verbose': -1, 'min_data_in_leaf': tuning_params[1],
+                                  'learning_rate': 0.03, 'verbose': -1, 'min_data_in_leaf': tuning_params[1],
                                   'feature_fraction': tuning_params[2]},
                       'int_rinse': {'boosting_type': 'gbdt', 'objective': 'mape', 'num_leaves': tuning_params[0],
-                                    'learning_rate': 0.02, 'verbose': -1, 'min_data_in_leaf': tuning_params[1],
+                                    'learning_rate': 0.03, 'verbose': -1, 'min_data_in_leaf': tuning_params[1],
                                     'feature_fraction': tuning_params[2]},
                       'acid': {'boosting_type': 'gbdt', 'objective': 'mape', 'num_leaves': tuning_params[0],
-                               'learning_rate': 0.02, 'verbose': -1, 'min_data_in_leaf': tuning_params[1],
+                               'learning_rate': 0.03, 'verbose': -1, 'min_data_in_leaf': tuning_params[1],
                                'feature_fraction': tuning_params[2]},
             }
 
@@ -127,17 +128,17 @@ for train_ratio in train_val_ratios:
         tuning_params = ('NA', 'NA', 'NA')
         # specify your configurations as a dict
         params = {'pre_rinse': {'boosting_type': 'gbdt', 'objective': 'mape', 'num_leaves': 31,
-                                'learning_rate': 0.01, 'verbose': -1, 'min_data_in_leaf': 20,
+                                'learning_rate': 0.03, 'verbose': -1, 'min_data_in_leaf': 25,
                                 'feature_fraction': 1},
-                  'caustic': {'boosting_type': 'gbdt', 'objective': 'mape', 'num_leaves': 63,
-                              'learning_rate': 0.01, 'verbose': -1, 'min_data_in_leaf': 20,
-                              'feature_fraction': 0.9},
+                  'caustic': {'boosting_type': 'gbdt', 'objective': 'mape', 'num_leaves': 70,
+                              'learning_rate': 0.03, 'verbose': -1, 'min_data_in_leaf': 25,
+                              'feature_fraction': 0.8},
                   'int_rinse': {'boosting_type': 'gbdt', 'objective': 'mape', 'num_leaves': 63,
-                                'learning_rate': 0.01, 'verbose': -1, 'min_data_in_leaf': 20,
-                                'feature_fraction': 0.8},
-                  'acid': {'boosting_type': 'gbdt', 'objective': 'mape', 'num_leaves': 80,
-                           'learning_rate': 0.01, 'verbose': -1, 'min_data_in_leaf': 20,
-                           'feature_fraction': 0.7}}
+                                'learning_rate': 0.03, 'verbose': -1, 'min_data_in_leaf': 25,
+                                'feature_fraction': 1},
+                  'acid': {'boosting_type': 'gbdt', 'objective': 'mape', 'num_leaves': 63,
+                           'learning_rate': 0.03, 'verbose': -1, 'min_data_in_leaf': 25,
+                           'feature_fraction': 0.8}}
 
         for model_type in cols_to_include.keys():
             validation_results = build_models(model_type, processed_train_data, processed_val_data, params[model_type],
@@ -159,6 +160,7 @@ print('Total time taken for hyperparameter tuning: ' + str(datetime.timedelta(se
 
 # Determine the appropriate hyperparameters for final model tuning
 test_iterations = calculate_validation_metrics(validation_summary)
+
 
 
 # Train on full data and make predictions

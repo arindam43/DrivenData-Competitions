@@ -1,4 +1,5 @@
 import pandas as pd
+import re
 
 
 def create_model_datasets(df_train, df_test, start_times, labels, metadata, path, val_or_test='validation'):
@@ -9,8 +10,16 @@ def create_model_datasets(df_train, df_test, start_times, labels, metadata, path
     processed_val_data = engineer_features(df_test, start_times)
     print('Successfully engineered features.')
 
+    # Fill nas with 0, where appropriate
+    for model_type in ['acid', 'int_rinse', 'pre_rinse', 'caustic']:
+        cols = list(filter(lambda x: re.search(r'(?=.*' + model_type + ')', x), list(processed_train_data.columns)))
+        processed_train_data.loc[pd.notna(processed_train_data['row_count_' + model_type]), cols] =\
+            processed_train_data.loc[pd.notna(processed_train_data['row_count_' + model_type]), cols].fillna(0)
+        # processed_train_data.loc[:, cols] = processed_train_data.loc[:, cols].fillna(-1)
+
+
     # Drop features that make no sense (produce mostly 0 or nan)
-    keep_cols = processed_train_data.apply(lambda x: (x.isnull()).sum() / len(x)) <= 0.8
+    keep_cols = processed_val_data.apply(lambda x: (x.isnull()).sum() / len(x)) <= 0.9
     processed_train_data = processed_train_data[list(keep_cols[keep_cols].index)]
     processed_val_data = processed_val_data[list(keep_cols[keep_cols].index)]
 
@@ -101,13 +110,13 @@ def engineer_features(df, timestamps):
 
 def calculate_features(df, df_groupby, group_cols, level):
     if level == 'return_phase':
-        output = pd.DataFrame({'total_flow': df_groupby.total_turbidity.sum(),
+        output = pd.DataFrame({'total_flow': df_groupby.total_flow.sum(),
+                               'end_flow': df_groupby.end_flow.sum(),
                                }).reset_index()
     elif level == 'phase':
-        output = pd.DataFrame({'phase_duration': (df_groupby.timestamp.max() -
+        output = pd.DataFrame({'row_count': df_groupby.phase.count(),
+                               'phase_duration': (df_groupby.timestamp.max() -
                                                   df_groupby.timestamp.min()).astype('timedelta64[s]'),
-                               'row_count': df_groupby.phase.count(),
-                               'end_flow': df_groupby.end_turbidity.sum(),
                                'min_temp': df_groupby.return_temperature.min(),
                                'obj_low_level': df_groupby.object_low_level.sum() / (df_groupby.timestamp.max() -
                                                                                      df_groupby.timestamp.min()).astype(
@@ -126,7 +135,7 @@ def calculate_features(df, df_groupby, group_cols, level):
 
 def remove_outliers(processed_train_data):
     # Remove processed with too short or long of train duration
-    processed_train_data = processed_train_data[(processed_train_data.phase_duration > 20) &
+    processed_train_data = processed_train_data[(processed_train_data.phase_duration > 30) &
                                                 (processed_train_data.phase_duration < 10000)]
 
     return processed_train_data

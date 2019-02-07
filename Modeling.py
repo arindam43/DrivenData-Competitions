@@ -114,24 +114,24 @@ def build_models(model_type, processed_train_data, processed_val_data, params, r
 
     modeling_data = build_lgbm_validation_datasets(processed_train_data, processed_val_data, response,
                                                    cols_to_include=cols_to_include)
-
-    if train_ratio == max_train_ratio and model_type == 'acid':
-        #lgb.plot_importance(gbm_train)
-
-        # explain the model's predictions using SHAP values
-        # (same syntax works for LightGBM, CatBoost, and scikit-learn models)
-        # matplotlib.pyplot.close()
-        matplotlib.pyplot.figure()
-        explainer = shap.TreeExplainer(gbm_train)
-        shap_values = explainer.shap_values(modeling_data['eval_' + model_type].data)
-
-        # visualize the first prediction's explanation
-        # shap.force_plot(explainer.expected_value, shap_values[0, :], modeling_data['eval_acid'].data.iloc[0, :], matplotlib=True)
-        # shap.dependence_plot('total_turbidity_acid', shap_values, modeling_data['eval_acid'].data)
-        # shap.summary_plot(shap_values, modeling_data['eval_' + model_type].data)
-        shap_title = 'Model Type: ' + model_type
-        shap.summary_plot(shap_values, modeling_data['eval_' + model_type].data, plot_type='bar', max_display=500,
-                          title=shap_title)
+    #
+    # if train_ratio == max_train_ratio and model_type == 'acid':
+    #     #lgb.plot_importance(gbm_train)
+    #
+    #     # explain the model's predictions using SHAP values
+    #     # (same syntax works for LightGBM, CatBoost, and scikit-learn models)
+    #     # matplotlib.pyplot.close()
+    #     matplotlib.pyplot.figure()
+    #     explainer = shap.TreeExplainer(gbm_train)
+    #     shap_values = explainer.shap_values(modeling_data['eval_' + model_type].data)
+    #
+    #     # visualize the first prediction's explanation
+    #     # shap.force_plot(explainer.expected_value, shap_values[0, :], modeling_data['eval_acid'].data.iloc[0, :], matplotlib=True)
+    #     # shap.dependence_plot('total_turbidity_acid', shap_values, modeling_data['eval_acid'].data)
+    #     # shap.summary_plot(shap_values, modeling_data['eval_' + model_type].data)
+    #     shap_title = 'Model Type: ' + model_type
+    #     shap.summary_plot(shap_values, modeling_data['eval_' + model_type].data, plot_type='bar', max_display=500,
+    #                       title=shap_title)
 
     validation_results = validation_results.append(pd.DataFrame([[model_type,
                                                                   train_ratio,
