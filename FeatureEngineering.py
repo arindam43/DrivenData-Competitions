@@ -17,7 +17,6 @@ def create_model_datasets(df_train, df_test, start_times, labels, metadata, path
             processed_train_data.loc[pd.notna(processed_train_data['row_count_' + model_type]), cols].fillna(0)
         # processed_train_data.loc[:, cols] = processed_train_data.loc[:, cols].fillna(-1)
 
-
     # Drop features that make no sense (produce mostly 0 or nan)
     keep_cols = processed_val_data.apply(lambda x: (x.isnull()).sum() / len(x)) <= 0.9
     processed_train_data = processed_train_data[list(keep_cols[keep_cols].index)]
@@ -94,9 +93,9 @@ def engineer_features(df, timestamps):
     df_final_output = df_final_output.sort_values(by=['object_id', 'start_time'])
 
     # df_final_output['hour_of_day'] = df_final_output.timestamp.dt.hour * 60 + df_final_output.timestamp.dt.minute
-
-    # df_final_output['weekday_name'] = df_final_output.timestamp.dt.dayofweek
     #
+    # df_final_output['weekday_name'] = df_final_output.start_time.dt.dayofweek
+
     # df_final_output['cumulative_runs_day'] = df_final_output.groupby(['pipeline', 'day_of_week']).\
     #                                                          cumcount()
 
@@ -110,14 +109,17 @@ def engineer_features(df, timestamps):
 
 def calculate_features(df, df_groupby, group_cols, level):
     if level == 'return_phase':
-        output = pd.DataFrame({'total_flow': df_groupby.total_flow.sum(),
-                               'end_flow': df_groupby.end_flow.sum(),
+        output = pd.DataFrame({'peak_turb': df_groupby.rolling_turb.max(),
+                               'total_flow': df_groupby.total_flow.sum(),
+                               'phase_duration': (df_groupby.timestamp.max() -
+                                                  df_groupby.timestamp.min()).astype('timedelta64[s]'),
                                }).reset_index()
     elif level == 'phase':
         output = pd.DataFrame({'row_count': df_groupby.phase.count(),
-                               'phase_duration': (df_groupby.timestamp.max() -
-                                                  df_groupby.timestamp.min()).astype('timedelta64[s]'),
+                               'end_turb': df_groupby.end_turb.sum(),
+                               'end_flow': df_groupby.end_flow.sum(),
                                'min_temp': df_groupby.return_temperature.min(),
+
                                'obj_low_level': df_groupby.object_low_level.sum() / (df_groupby.timestamp.max() -
                                                                                      df_groupby.timestamp.min()).astype(
                                    'timedelta64[s]'),
