@@ -4,6 +4,14 @@ import re
 
 def create_model_datasets(df_train, df_test, start_times, labels, metadata, path, val_or_test='validation'):
 
+    # Create normalization lookup table
+    train_lookup = df_train.groupby(['object_id', 'return_phase']).\
+        agg({'supply_flow':'median', 'return_flow':'median'}).\
+        reset_index()
+    train_lookup.columns = ['object_id', 'return_phase', 'median_supply_flow', 'median_return_flow']
+    df_train = df_train.merge(train_lookup, on=['object_id', 'return_phase']).sort_values(by='timestamp')
+    df_test = df_test.merge(train_lookup, on=['object_id', 'return_phase']).sort_values(by='timestamp')
+
     # Engineer phase-level features on train, validation, and test sets
     print('Engineering features on train, ' + val_or_test + ' sets...')
     processed_train_data = engineer_features(df_train, start_times)
@@ -51,11 +59,18 @@ def create_model_datasets(df_train, df_test, start_times, labels, metadata, path
 
 
 def engineer_features(df, timestamps):
+
+    # Normalize flows using historical averages
+    #df['norm_supply_flow'] = df.supply_flow / df.median_supply_flow
+    df['norm_return_flow'] = df.return_flow / df.median_return_flow
+    df['norm_turb_flow'] = df.norm_return_flow * df.return_turbidity
+
+
     # Return-phase-level features
     group_cols = ['process_id', 'object_id', 'pipeline', 'return_phase']
     df_groupby = df.groupby(group_cols)
 
-    df_output_phase = calculate_features(df, df_groupby, group_cols, level='return_phase')
+    df_output_phase = calculate_features(df_groupby, level='return_phase')
 
     df_output_phase = pd.pivot_table(df_output_phase,
                                      index=['process_id', 'object_id', 'pipeline'],
@@ -68,7 +83,7 @@ def engineer_features(df, timestamps):
     # Phase-level features
     group_cols = ['process_id', 'object_id', 'pipeline', 'phase']
     df_groupby = df.groupby(group_cols)
-    df_output_phase2 = calculate_features(df, df_groupby, group_cols, level='phase')
+    df_output_phase2 = calculate_features(df_groupby, level='phase')
 
     df_output_phase2 = pd.pivot_table(df_output_phase2,
                                       index=['process_id', 'object_id', 'pipeline'],
@@ -84,7 +99,7 @@ def engineer_features(df, timestamps):
     group_cols = ['process_id', 'object_id', 'pipeline']
     df_groupby = df.groupby(group_cols)
 
-    df_output_process = calculate_features(df, df_groupby, group_cols, level='process')
+    df_output_process = calculate_features(df_groupby, level='process')
 
     df_final_output = df_output_phase.merge(df_output_process, on=group_cols)
 
@@ -107,16 +122,16 @@ def engineer_features(df, timestamps):
     return df_final_output
 
 
-def calculate_features(df, df_groupby, group_cols, level):
+def calculate_features(df_groupby, level):
     if level == 'return_phase':
-        output = pd.DataFrame({'peak_turb': df_groupby.rolling_turb.max(),
+        output = pd.DataFrame({'norm_turb': df_groupby.norm_turb_flow.sum(),
                                'total_flow': df_groupby.total_flow.sum(),
                                'phase_duration': (df_groupby.timestamp.max() -
                                                   df_groupby.timestamp.min()).astype('timedelta64[s]'),
                                }).reset_index()
     elif level == 'phase':
         output = pd.DataFrame({'row_count': df_groupby.phase.count(),
-                               'end_turb': df_groupby.end_turb.sum(),
+                               'end_turb': df_groupby.end_turb.mean(),
                                'end_flow': df_groupby.end_flow.sum(),
                                'min_temp': df_groupby.return_temperature.min(),
 

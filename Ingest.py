@@ -25,7 +25,7 @@ def ingest_data(path):
     return raw_data, labels, metadata, test_data, start_times
 
 
-def preprocess_data(df, test_data, start_times):
+def preprocess_data(df, start_times, phase_defs=None):
     # Pre-processing - convert "intermediate rinse" to 'int_rinse'
     df.phase[df.phase == 'intermediate_rinse'] = 'int_rinse'
 
@@ -42,7 +42,10 @@ def preprocess_data(df, test_data, start_times):
                                           np.where(df.return_acid == True, 'ac',
                                           np.where(df.return_recovery_water == True, 'rec_water', 'none'))))
 
-    normal_phases = list(df.return_phase.value_counts()[df.return_phase.value_counts() > 300000].reset_index()['index'])
+    if phase_defs is None:
+        normal_phases = list(df.return_phase.value_counts()[df.return_phase.value_counts() > 300000].reset_index()['index'])
+    else:
+        normal_phases = phase_defs
     df['return_phase'] = np.where(df.return_phase.isin(normal_phases), df.return_phase, 'other')
 
     df['return_flow'] = np.maximum(0, df.return_flow)
@@ -51,11 +54,14 @@ def preprocess_data(df, test_data, start_times):
             df.groupby(['process_id', 'phase']).timestamp.transform('max') - df.timestamp).dt.seconds
     df['end_turb'] = df.return_turbidity * (df.phase_elapse_end <= 40)
     df['end_flow'] = df.total_flow * (df.phase_elapse_end <= 40)
-    df['rolling_turb'] = df.groupby(['process_id', 'return_phase']).return_turbidity.rolling(60).mean().reset_index(drop=True)
 
     print('Successfully calculated process-timestamp-level features.')
     print('')
-    return df
+
+    if phase_defs is None:
+        return df, normal_phases
+    else:
+        return df
 
 
 def calculate_start_times(df):

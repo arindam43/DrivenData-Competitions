@@ -20,7 +20,7 @@ from Modeling import build_test_models
 
 
 def predict_test_values(raw_data, test_data, start_times, metadata, path,
-                        params, response, test_iterations, cols_to_include, labels):
+                        params, response, test_iterations, labels, cols_to_include):
 
     # Initialize list of predictions; will contain four dataframes corresponding to predictions from the four models
     test_predictions = []
@@ -30,24 +30,6 @@ def predict_test_values(raw_data, test_data, start_times, metadata, path,
     processed_test_data = create_model_datasets(raw_data, test_data, start_times, labels, metadata,
                                                 path, val_or_test='test')
 
-    non_phase_cols_short = ['object_id', 'recipe_type']
-    non_phase_cols_full = ['object_id']
-    none_cols = set(filter(lambda x: re.search(r'(?=.*none|row_count.*)', x),
-                           list(processed_full_train_data.columns)))
-    cols_to_include = {'pre_rinse': list(set(filter(lambda x: re.search(r'(?=.*pre_rinse)', x),
-                                                    list(
-                                                        processed_full_train_data.columns))) - none_cols) + non_phase_cols_short,
-                       'caustic': list(set(filter(lambda x: re.search(r'(?=.*pre_rinse|.*caustic)', x),
-                                                  list(
-                                                      processed_full_train_data.columns))) - none_cols) + non_phase_cols_short,
-                       'int_rinse': list(set(filter(lambda x: re.search(r'(?=.*pre_rinse|.*caustic|.*int_rinse)', x),
-                                                    list(
-                                                        processed_full_train_data.columns))) - none_cols) + non_phase_cols_full,
-                       'acid': list(
-                           set(filter(lambda x: re.search(r'(?=.*pre_rinse|.*caustic|.*int_rinse|.*acid|.*other)', x),
-                                      list(processed_full_train_data.columns))) - none_cols) + non_phase_cols_full
-                       # 'acid': list(set(processed_train_data.columns) - set(['object_id', 'process_id', 'pipeline', 'day_number', 'start_time', response])) + non_phase_cols
-                       }
     # Build the four test models and make the predictions on the set
     for model_type in cols_to_include.keys():
         test_predictions = build_test_models(model_type, processed_full_train_data, processed_test_data,

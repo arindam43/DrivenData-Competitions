@@ -1,8 +1,38 @@
 import lightgbm as lgb
 import pandas as pd
+import re
 import numpy as np
 import shap
 import matplotlib
+
+
+def subset_modeling_columns(processed_train_data):
+    # For each of the four models, identify which columns should be kept from overall set
+    # Simulates data censoring in test data
+    non_phase_cols_short = ['object_id', 'recipe_type']
+    non_phase_cols_full = ['object_id']
+    flow_cols = set(filter(lambda x: re.search(r'(?=.*flow)', x), list(processed_train_data.columns)))
+    turb_cols = set(filter(lambda x: re.search(r'(?=.*turb)', x), list(processed_train_data.columns)))
+
+    none_cols = set(filter(lambda x: re.search(r'(?=.*none|row_count.*)', x), list(processed_train_data.columns)))
+
+    cols_to_include = {'pre_rinse': list(set(filter(lambda x: re.search(r'(?=.*pre_rinse)', x),
+                                                    list(
+                                                        processed_train_data.columns))) - none_cols - flow_cols) + non_phase_cols_short,
+                       'caustic': list(set(filter(lambda x: re.search(r'(?=.*pre_rinse|.*caustic)', x),
+                                                  list(
+                                                      processed_train_data.columns))) - none_cols - flow_cols) + non_phase_cols_short,
+                       'int_rinse': list(set(filter(lambda x: re.search(r'(?=.*pre_rinse|.*caustic|.*int_rinse)', x),
+                                                    list(
+                                                        processed_train_data.columns))) - none_cols - flow_cols) + non_phase_cols_full,
+                       'acid': list(
+                           set(filter(lambda x: re.search(r'(?=.*pre_rinse|.*caustic|.*int_rinse|.*acid|.*other)', x),
+                                      list(
+                                          processed_train_data.columns))) - none_cols - turb_cols) + non_phase_cols_full
+                       # 'acid': list(set(processed_train_data.columns) - set(['object_id', 'process_id', 'pipeline', 'day_number', 'start_time', response])) + non_phase_cols
+                       }
+
+    return cols_to_include
 
 
 def build_lgbm_validation_datasets(train_data, val_data, response, cols_to_include=None):
@@ -43,9 +73,8 @@ def build_lgbm_validation_datasets(train_data, val_data, response, cols_to_inclu
             }
 
 
-def build_lgbm_test_datasets(full_train_data, test_data, response, cols_to_drop=None, cols_to_include=None):
+def build_lgbm_test_datasets(full_train_data, test_data, response, cols_to_include=None):
     # Model training
-    drop_cols = [response]
     cols_to_include = cols_to_include + ['process_id']
 
     test_data_acid = test_data[test_data.row_count_acid.notnull()]
@@ -60,17 +89,10 @@ def build_lgbm_test_datasets(full_train_data, test_data, response, cols_to_drop=
 
     y_train = full_train_data.ix[:, response]
 
-    if cols_to_drop is None and cols_to_include is None:
+    if cols_to_include is None:
         print('You dun goofed')
 
-    elif cols_to_include is None:
-        x_train = full_train_data.drop(drop_cols + cols_to_drop, axis=1)
-        x_test_acid = test_data_acid.drop(drop_cols + cols_to_drop, axis=1)
-        x_test_pre_rinse = test_data_pre_rinse.drop(drop_cols + cols_to_drop, axis=1)
-        x_test_caustic = test_data_caustic.drop(drop_cols + cols_to_drop, axis=1)
-        x_test_int_rinse = test_data_int_rinse.drop(drop_cols + cols_to_drop, axis=1)
-
-    elif cols_to_drop is None:
+    else:
         x_test_acid = test_data_acid[cols_to_include]
         x_test_pre_rinse = test_data_pre_rinse[cols_to_include]
         x_test_caustic = test_data_caustic[cols_to_include]
@@ -79,8 +101,6 @@ def build_lgbm_test_datasets(full_train_data, test_data, response, cols_to_drop=
         if 'process_id' in cols_to_include:
             cols_to_include.remove('process_id')
         x_train = full_train_data[cols_to_include]
-    else:
-        print('How did you even get here?')
 
     # create dataset for lightgbm
     lgb_train = lgb.Dataset(x_train, y_train)
@@ -114,24 +134,24 @@ def build_models(model_type, processed_train_data, processed_val_data, params, r
 
     modeling_data = build_lgbm_validation_datasets(processed_train_data, processed_val_data, response,
                                                    cols_to_include=cols_to_include)
-
-    if train_ratio == max_train_ratio:
-        #lgb.plot_importance(gbm_train)
-
-        # explain the model's predictions using SHAP values
-        # (same syntax works for LightGBM, CatBoost, and scikit-learn models)
-        # matplotlib.pyplot.close()
-        matplotlib.pyplot.figure()
-        explainer = shap.TreeExplainer(gbm_train)
-        shap_values = explainer.shap_values(modeling_data['eval_' + model_type].data)
-
-        # visualize the first prediction's explanation
-        # shap.force_plot(explainer.expected_value, shap_values[0, :], modeling_data['eval_acid'].data.iloc[0, :], matplotlib=True)
-        # shap.dependence_plot('total_turbidity_acid', shap_values, modeling_data['eval_acid'].data)
-        # shap.summary_plot(shap_values, modeling_data['eval_' + model_type].data)
-        shap_title = 'Model Type: ' + model_type
-        shap.summary_plot(shap_values, modeling_data['eval_' + model_type].data, plot_type='bar', max_display=500,
-                          title=shap_title)
+    #
+    # if train_ratio == max_train_ratio:
+    #     #lgb.plot_importance(gbm_train)
+    #
+    #     # explain the model's predictions using SHAP values
+    #     # (same syntax works for LightGBM, CatBoost, and scikit-learn models)
+    #     # matplotlib.pyplot.close()
+    #     matplotlib.pyplot.figure()
+    #     explainer = shap.TreeExplainer(gbm_train)
+    #     shap_values = explainer.shap_values(modeling_data['eval_' + model_type].data)
+    #
+    #     # visualize the first prediction's explanation
+    #     # shap.force_plot(explainer.expected_value, shap_values[0, :], modeling_data['eval_acid'].data.iloc[0, :], matplotlib=True)
+    #     # shap.dependence_plot('total_turbidity_acid', shap_values, modeling_data['eval_acid'].data)
+    #     # shap.summary_plot(shap_values, modeling_data['eval_' + model_type].data)
+    #     shap_title = 'Model Type: ' + model_type
+    #     shap.summary_plot(shap_values, modeling_data['eval_' + model_type].data, plot_type='bar', max_display=500,
+    #                       title=shap_title)
 
     validation_results = validation_results.append(pd.DataFrame([[model_type,
                                                                   train_ratio,
@@ -150,7 +170,8 @@ def build_test_models(model_type, processed_full_train_data, processed_test_data
                       cols_to_include, y_test_pred):
 
     # Build lgbm data sets on full train and test data
-    prediction_data = build_lgbm_test_datasets(processed_full_train_data, processed_test_data, response, cols_to_include=cols_to_include)
+    prediction_data = build_lgbm_test_datasets(processed_full_train_data, processed_test_data, response,
+                                               cols_to_include=cols_to_include)
 
     # Build model on full training data to make predictions for test set
     print('Building model on full training data...')

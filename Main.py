@@ -10,7 +10,7 @@ except KeyError:
     pass
 
 from FeatureEngineering import create_model_datasets
-from Modeling import build_models, calculate_validation_metrics
+from Modeling import build_models, calculate_validation_metrics, subset_modeling_columns
 from Predict import predict_test_values
 from Ingest import ingest_data, preprocess_data
 
@@ -21,8 +21,8 @@ if 'raw_data' not in locals():
     raw_data, labels, metadata, test_data, start_times = ingest_data(path)
 
     # Pre-process data
-    raw_data = preprocess_data(raw_data, test_data, start_times)
-    test_data = preprocess_data(test_data, test_data, start_times)
+    raw_data, return_phases = preprocess_data(raw_data, start_times)
+    test_data = preprocess_data(test_data, start_times, return_phases)
 
     # Pre-process metadata by converting the one-hot encoded recipe types to a single column
     # Only 3 recipe types in total: pre_rinse + caustic, all phases, and acid only
@@ -67,34 +67,19 @@ for train_ratio in train_val_ratios:
         processed_val_data = create_model_datasets(raw_train_data, raw_val_data, start_times, labels, metadata,
                                                    path, val_or_test='validation')
 
-    # For each of the four models, identify which columns should be kept from overall set
-    # Simulates data censoring in test data
-    non_phase_cols_short = ['object_id', 'recipe_type']
-    non_phase_cols_full = ['object_id']
-    flow_cols = set(filter(lambda x: re.search(r'(?=.*flow)', x), list(processed_train_data.columns)))
-    turb_cols = set(filter(lambda x: re.search(r'(?=.*turb)', x), list(processed_train_data.columns)))
-
-    none_cols = set(filter(lambda x: re.search(r'(?=.*none|row_count.*)', x), list(processed_train_data.columns)))
-
-    cols_to_include = {'pre_rinse': list(set(filter(lambda x: re.search(r'(?=.*pre_rinse)', x),
-                                             list(processed_train_data.columns))) - none_cols - flow_cols) + non_phase_cols_short,
-                       'caustic': list(set(filter(lambda x: re.search(r'(?=.*pre_rinse|.*caustic)', x),
-                                           list(processed_train_data.columns))) - none_cols - flow_cols) + non_phase_cols_short,
-                       'int_rinse': list(set(filter(lambda x: re.search(r'(?=.*pre_rinse|.*caustic|.*int_rinse)', x),
-                                             list(processed_train_data.columns))) - none_cols - flow_cols) + non_phase_cols_full,
-                       'acid': list(set(filter(lambda x: re.search(r'(?=.*pre_rinse|.*caustic|.*int_rinse|.*acid|.*other)', x),
-                                        list(processed_train_data.columns))) - none_cols - turb_cols) + non_phase_cols_full
-                       #'acid': list(set(processed_train_data.columns) - set(['object_id', 'process_id', 'pipeline', 'day_number', 'start_time', response])) + non_phase_cols
-                       }
+    # Create dictionary of columns to be included in each of the four models
+    cols_to_include = subset_modeling_columns(processed_train_data)
 
     modeling_approach = 'single_model'
+    learning_rate = 0.02
 
     # Hyperparameter tuning - simple grid search
     if modeling_approach == 'parameter_tuning':
         leaves_tuning = [31, 45, 63, 75, 90]
-        min_data_in_leaf_tuning = [10, 20, 30]
+        min_data_in_leaf_tuning = [10]
         feature_fraction_tuning = [1]
-        min_sum_hessian_in_leaf_tuning = [10, 25, 40, 55, 65]
+        min_sum_hessian_in_leaf_tuning = [10, 25, 40, 55, 70]
+
         tuning_grid = list(itertools.product(leaves_tuning, min_data_in_leaf_tuning, feature_fraction_tuning,
                                              min_sum_hessian_in_leaf_tuning))
         counter = 1
@@ -110,16 +95,16 @@ for train_ratio in train_val_ratios:
 
             # specify your configurations as a dict
             params = {'pre_rinse': {'boosting_type': 'gbdt', 'objective': 'mape', 'num_leaves': tuning_params[0],
-                                    'learning_rate': 0.02, 'verbose': -1, 'min_data': tuning_params[1],
+                                    'learning_rate': learning_rate, 'verbose': -1, 'min_data': tuning_params[1],
                                     'feature_fraction': tuning_params[2], 'min_hessian': tuning_params[3]},
                       'caustic': {'boosting_type': 'gbdt', 'objective': 'mape', 'num_leaves': tuning_params[0],
-                                  'learning_rate': 0.02, 'verbose': -1, 'min_data': tuning_params[1],
+                                  'learning_rate': learning_rate, 'verbose': -1, 'min_data': tuning_params[1],
                                   'feature_fraction': tuning_params[2], 'min_hessian': tuning_params[3]},
                       'int_rinse': {'boosting_type': 'gbdt', 'objective': 'mape', 'num_leaves': tuning_params[0],
-                                    'learning_rate': 0.02, 'verbose': -1, 'min_data': tuning_params[1],
+                                    'learning_rate': learning_rate, 'verbose': -1, 'min_data': tuning_params[1],
                                     'feature_fraction': tuning_params[2], 'min_hessian': tuning_params[3]},
                       'acid': {'boosting_type': 'gbdt', 'objective': 'mape', 'num_leaves': tuning_params[0],
-                               'learning_rate': 0.02, 'verbose': -1, 'min_data': tuning_params[1],
+                               'learning_rate': learning_rate, 'verbose': -1, 'min_data': tuning_params[1],
                                'feature_fraction': tuning_params[2], 'min_hessian': tuning_params[3]},
             }
 
@@ -134,17 +119,17 @@ for train_ratio in train_val_ratios:
         tuning_params = ('NA', 'NA', 'NA', 'NA')
         # specify your configurations as a dict
         params = {'pre_rinse': {'boosting_type': 'gbdt', 'objective': 'mape', 'num_leaves': 63,
-                                'learning_rate': 0.02, 'verbose': -1, 'min_data_in_leaf': 10,
-                                'feature_fraction': 1, 'min_hessian': 25},
-                  'caustic': {'boosting_type': 'gbdt', 'objective': 'mape', 'num_leaves': 90,
-                              'learning_rate': 0.02, 'verbose': -1, 'min_data_in_leaf': 10,
-                              'feature_fraction': 1, 'min_hessian': 25},
+                                'learning_rate': learning_rate, 'verbose': -1, 'min_data_in_leaf': 10,
+                                'feature_fraction': 1, 'min_hessian': 55},
+                  'caustic': {'boosting_type': 'gbdt', 'objective': 'mape', 'num_leaves': 63,
+                              'learning_rate': learning_rate, 'verbose': -1, 'min_data_in_leaf': 10,
+                              'feature_fraction': 1, 'min_hessian': 40},
                   'int_rinse': {'boosting_type': 'gbdt', 'objective': 'mape', 'num_leaves': 63,
-                                'learning_rate': 0.02, 'verbose': -1, 'min_data_in_leaf': 10,
+                                'learning_rate': learning_rate, 'verbose': -1, 'min_data_in_leaf': 10,
                                 'feature_fraction': 1, 'min_hessian': 25},
-                  'acid': {'boosting_type': 'gbdt', 'objective': 'mape', 'num_leaves': 45,
-                           'learning_rate': 0.02, 'verbose': -1, 'min_data_in_leaf': 10,
-                           'feature_fraction': 1, 'min_hessian': 55}}
+                  'acid': {'boosting_type': 'gbdt', 'objective': 'mape', 'num_leaves': 31,
+                           'learning_rate': learning_rate, 'verbose': -1, 'min_data_in_leaf': 10,
+                           'feature_fraction': 1, 'min_hessian': 70}}
 
         for model_type in cols_to_include.keys():
             validation_results = build_models(model_type, processed_train_data, processed_val_data, params[model_type],
@@ -167,10 +152,9 @@ print('Total time taken for hyperparameter tuning: ' + str(datetime.timedelta(se
 # Determine the appropriate hyperparameters for final model tuning
 test_iterations = calculate_validation_metrics(validation_summary)
 
-#
-# if modeling_approach == 'single_model':
-#     # Train on full data and make predictions
-#     print('')
-#     print('Training full model and making test set predictions...')
-#     predict_test_values(raw_data, test_data, start_times, metadata, path,
-#                         params, response, test_iterations, cols_to_include, labels)
+
+# Train on full data and make predictions
+print('')
+print('Training full model and making test set predictions...')
+predict_test_values(raw_data, test_data, start_times, metadata, path,
+                    params, response, test_iterations, labels, cols_to_include)
