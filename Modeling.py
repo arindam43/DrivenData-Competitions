@@ -11,8 +11,10 @@ def subset_modeling_columns(processed_train_data):
     # Simulates data censoring in test data
     non_phase_cols_short = ['object_id', 'recipe_type']
     non_phase_cols_full = ['object_id']
+
     flow_cols = set(filter(lambda x: re.search(r'(?=.*flow)', x), list(processed_train_data.columns)))
     turb_cols = set(filter(lambda x: re.search(r'(?=.*turb)', x), list(processed_train_data.columns)))
+    supply_cols = set(filter(lambda x: re.search(r'(?=.*supply)', x), list(processed_train_data.columns)))
 
     none_cols = set(filter(lambda x: re.search(r'(?=.*none|row_count.*)', x), list(processed_train_data.columns)))
 
@@ -24,52 +26,32 @@ def subset_modeling_columns(processed_train_data):
                                                       processed_train_data.columns))) - none_cols - flow_cols) + non_phase_cols_short,
                        'int_rinse': list(set(filter(lambda x: re.search(r'(?=.*pre_rinse|.*caustic|.*int_rinse)', x),
                                                     list(
-                                                        processed_train_data.columns))) - none_cols - flow_cols) + non_phase_cols_full,
+                                                        processed_train_data.columns))) - none_cols - flow_cols - supply_cols) + non_phase_cols_full,
                        'acid': list(
                            set(filter(lambda x: re.search(r'(?=.*pre_rinse|.*caustic|.*int_rinse|.*acid|.*other)', x),
                                       list(
-                                          processed_train_data.columns))) - none_cols - turb_cols) + non_phase_cols_full
-                       # 'acid': list(set(processed_train_data.columns) - set(['object_id', 'process_id', 'pipeline', 'day_number', 'start_time', response])) + non_phase_cols
+                                          processed_train_data.columns))) - none_cols - turb_cols - supply_cols) + non_phase_cols_full
                        }
 
     return cols_to_include
 
 
-def build_lgbm_validation_datasets(train_data, val_data, response, cols_to_include=None):
+def build_lgbm_validation_datasets(train_data, val_data, model_type, response, cols_to_include=None):
     # Model training
-    val_data_acid = val_data[val_data.row_count_acid.notnull()]
-    val_data_int_rinse = val_data[val_data.row_count_int_rinse.notnull()]
-    val_data_caustic = val_data[val_data.row_count_caustic.notnull()]
-    val_data_pre_rinse = val_data[val_data.row_count_pre_rinse.notnull()]
+    val_data = val_data[val_data['row_count_' + model_type].notnull()]
 
-    y_train = train_data.ix[:, response]
-    y_val_acid = val_data_acid.ix[:, response]
-    y_val_pre_rinse = val_data_pre_rinse.ix[:, response]
-    y_val_caustic = val_data_caustic.ix[:, response]
-    y_val_int_rinse = val_data_int_rinse.ix[:, response]
+    y_train = train_data.loc[:, response]
+    y_val = val_data.loc[:, response]
 
-    if cols_to_include is None:
-        print('You dun goofed. Please specify which columns to include in modeling data sets.')
-
-    else:
-        x_train = train_data[cols_to_include]
-        x_val_acid = val_data_acid[cols_to_include]
-        x_val_pre_rinse = val_data_pre_rinse[cols_to_include]
-        x_val_caustic = val_data_caustic[cols_to_include]
-        x_val_int_rinse = val_data_int_rinse[cols_to_include]
+    x_train = train_data[cols_to_include]
+    x_val = val_data[cols_to_include]
 
     # create dataset for lightgbm
     lgb_train = lgb.Dataset(x_train, y_train)
-    lgb_eval_acid = lgb.Dataset(x_val_acid, y_val_acid, reference=lgb_train)
-    lgb_eval_pre_rinse = lgb.Dataset(x_val_pre_rinse, y_val_pre_rinse, reference=lgb_train)
-    lgb_eval_caustic = lgb.Dataset(x_val_caustic, y_val_caustic, reference=lgb_train)
-    lgb_eval_int_rinse = lgb.Dataset(x_val_int_rinse, y_val_int_rinse, reference=lgb_train)
+    lgb_eval = lgb.Dataset(x_val, y_val, reference=lgb_train)
 
     return {'train': lgb_train,
-            'eval_acid': lgb_eval_acid,
-            'eval_pre_rinse': lgb_eval_pre_rinse,
-            'eval_caustic': lgb_eval_caustic,
-            'eval_int_rinse': lgb_eval_int_rinse
+            'eval': lgb_eval
             }
 
 
@@ -118,7 +100,7 @@ def build_models(model_type, processed_train_data, processed_val_data, params, r
 
     # Build lightgbm datasets from train and test data
     # Must be repeated for each model to properly simulate data censoring ('cols_to_include' parameter)
-    modeling_data = build_lgbm_validation_datasets(processed_train_data, processed_val_data, response,
+    modeling_data = build_lgbm_validation_datasets(processed_train_data, processed_val_data, model_type, response,
                                                    cols_to_include=cols_to_include)
 
     # Train model
@@ -127,38 +109,35 @@ def build_models(model_type, processed_train_data, processed_val_data, params, r
     gbm_train = lgb.train(params,
                           modeling_data['train'],
                           num_boost_round=5000,
-                          valid_sets=modeling_data['eval_' + model_type],
+                          valid_sets=modeling_data['eval'],
                           verbose_eval=False,
                           early_stopping_rounds=25
                           )
 
-    modeling_data = build_lgbm_validation_datasets(processed_train_data, processed_val_data, response,
+    modeling_data = build_lgbm_validation_datasets(processed_train_data, processed_val_data, model_type, response,
                                                    cols_to_include=cols_to_include)
-    #
-    # if train_ratio == max_train_ratio:
-    #     #lgb.plot_importance(gbm_train)
-    #
-    #     # explain the model's predictions using SHAP values
-    #     # (same syntax works for LightGBM, CatBoost, and scikit-learn models)
-    #     # matplotlib.pyplot.close()
-    #     matplotlib.pyplot.figure()
-    #     explainer = shap.TreeExplainer(gbm_train)
-    #     shap_values = explainer.shap_values(modeling_data['eval_' + model_type].data)
-    #
-    #     # visualize the first prediction's explanation
-    #     # shap.force_plot(explainer.expected_value, shap_values[0, :], modeling_data['eval_acid'].data.iloc[0, :], matplotlib=True)
-    #     # shap.dependence_plot('total_turbidity_acid', shap_values, modeling_data['eval_acid'].data)
-    #     # shap.summary_plot(shap_values, modeling_data['eval_' + model_type].data)
-    #     shap_title = 'Model Type: ' + model_type
-    #     shap.summary_plot(shap_values, modeling_data['eval_' + model_type].data, plot_type='bar', max_display=500,
-    #                       title=shap_title)
+
+    if train_ratio == max_train_ratio and model_type == 'acid':
+        # explain the model's predictions using SHAP values
+        # (same syntax works for LightGBM, CatBoost, and scikit-learn models)
+        # matplotlib.pyplot.close()
+        matplotlib.pyplot.figure()
+        explainer = shap.TreeExplainer(gbm_train)
+        shap_values = explainer.shap_values(modeling_data['eval'].data)
+
+        # visualize the first prediction's explanation
+        # shap.force_plot(explainer.expected_value, shap_values[0, :], modeling_data['eval_acid'].data.iloc[0, :], matplotlib=True)
+        # shap.dependence_plot('total_turbidity_acid', shap_values, modeling_data['eval_acid'].data)
+        # shap.summary_plot(shap_values, modeling_data['eval_' + model_type].data)
+        shap_title = 'Model Type: ' + model_type
+        shap.summary_plot(shap_values, modeling_data['eval'].data, plot_type='bar', max_display=500,
+                          title=shap_title)
 
     validation_results = validation_results.append(pd.DataFrame([[model_type,
                                                                   train_ratio,
                                                                   tuning_params[0],
                                                                   tuning_params[1],
                                                                   tuning_params[2],
-                                                                  tuning_params[3],
                                                                   round(gbm_train.best_score['valid_0']['mape'], 5),
                                                                   gbm_train.best_iteration]],
                                                    columns=validation_results.columns))

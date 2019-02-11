@@ -4,11 +4,12 @@ import re
 
 def create_model_datasets(df_train, df_test, start_times, labels, metadata, path, val_or_test='validation'):
 
-    # Create normalization lookup table
+    # Create normalization lookup tables
     train_lookup = df_train.groupby(['object_id', 'return_phase']).\
-        agg({'supply_flow':'median', 'return_flow':'median'}).\
+        agg({'supply_flow':'median', 'return_flow':'median', 'return_conductivity': 'median'}).\
         reset_index()
-    train_lookup.columns = ['object_id', 'return_phase', 'median_supply_flow', 'median_return_flow']
+    train_lookup.columns = ['object_id', 'return_phase', 'median_supply_flow', 'median_return_flow',
+                            'median_conductivity']
     df_train = df_train.merge(train_lookup, on=['object_id', 'return_phase']).sort_values(by='timestamp')
     df_test = df_test.merge(train_lookup, on=['object_id', 'return_phase']).sort_values(by='timestamp')
 
@@ -61,10 +62,10 @@ def create_model_datasets(df_train, df_test, start_times, labels, metadata, path
 def engineer_features(df, timestamps):
 
     # Normalize flows using historical averages
-    #df['norm_supply_flow'] = df.supply_flow / df.median_supply_flow
+    df['norm_supply_flow'] = df.supply_flow / df.median_supply_flow
     df['norm_return_flow'] = df.return_flow / df.median_return_flow
+    df['norm_conductivity'] = df.return_conductivity / df.median_conductivity
     df['norm_turb_flow'] = df.norm_return_flow * df.return_turbidity
-
 
     # Return-phase-level features
     group_cols = ['process_id', 'object_id', 'pipeline', 'return_phase']
@@ -79,6 +80,22 @@ def engineer_features(df, timestamps):
 
     df_output_phase.columns = [' '.join(col).strip() for col in df_output_phase.columns.values]
     df_output_phase.columns = df_output_phase.columns.str.replace(' ', '_')
+
+    # Supply-phase-level features
+    group_cols = ['process_id', 'object_id', 'pipeline', 'supply_phase']
+    df_groupby = df.groupby(group_cols)
+
+    df_output_phase2 = calculate_features(df_groupby, level='supply_phase')
+
+    df_output_phase2 = pd.pivot_table(df_output_phase2,
+                                      index=['process_id', 'object_id', 'pipeline'],
+                                      columns='supply_phase',
+                                      values=list(set(df_output_phase2.columns) - set(group_cols))).reset_index()
+
+    df_output_phase2.columns = [' '.join(col).strip() for col in df_output_phase2.columns.values]
+    df_output_phase2.columns = df_output_phase2.columns.str.replace(' ', '_')
+
+    df_output_phase = df_output_phase2.merge(df_output_phase, on=['process_id', 'object_id', 'pipeline'])
 
     # Phase-level features
     group_cols = ['process_id', 'object_id', 'pipeline', 'phase']
@@ -114,19 +131,20 @@ def engineer_features(df, timestamps):
     # df_final_output['cumulative_runs_day'] = df_final_output.groupby(['pipeline', 'day_of_week']).\
     #                                                          cumcount()
 
-    # cols_to_shift = list(filter(lambda x: re.search(r'(?=.*pre_rinse|.*caustic|.*intermediate|.*acid)', x), list(df_final_output.columns)))
-    #
-    # for col in cols_to_shift:
-    #     df_final_output['previous_' + col] = df_final_output.groupby(['pipeline', 'object_id'])[col].shift(1)
 
     return df_final_output
 
 
 def calculate_features(df_groupby, level):
     if level == 'return_phase':
-        output = pd.DataFrame({'norm_turb': df_groupby.norm_turb_flow.sum(),
-                               'total_flow': df_groupby.total_flow.sum(),
-                               'phase_duration': (df_groupby.timestamp.max() -
+        output = pd.DataFrame({'return_norm_turb': df_groupby.norm_turb_flow.sum(),
+                               'return_total_flow': df_groupby.total_flow.sum(),
+                               'return_phase_duration': (df_groupby.timestamp.max() -
+                                                  df_groupby.timestamp.min()).astype('timedelta64[s]'),
+                               }).reset_index()
+    elif level == 'supply_phase':
+        output = pd.DataFrame({'supply_flow': df_groupby.supply_flow.sum(),
+                               'supply_phase_duration': (df_groupby.timestamp.max() -
                                                   df_groupby.timestamp.min()).astype('timedelta64[s]'),
                                }).reset_index()
     elif level == 'phase':

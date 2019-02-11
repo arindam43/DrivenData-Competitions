@@ -1,5 +1,6 @@
 import pandas as pd
 import numpy as np
+import re
 pd.options.mode.chained_assignment = None
 
 
@@ -25,30 +26,47 @@ def ingest_data(path):
     return raw_data, labels, metadata, test_data, start_times
 
 
-def preprocess_data(df, start_times, phase_defs=None):
+def preprocess_data(df, start_times, test_data, return_phase_defs=None, supply_phase_defs=None):
     # Pre-processing - convert "intermediate rinse" to 'int_rinse'
     df.phase[df.phase == 'intermediate_rinse'] = 'int_rinse'
 
-    # Optional pre-processing - remove processes with objects that aren't in test set
+    # # Optional pre-processing - remove processes with objects that aren't in test set
     # df = df[df.object_id.isin(test_data.object_id)]
 
     print('Calculating process-timestamp-level features...')
     df.timestamp = df.timestamp.astype('datetime64[s]')
     df = df.merge(start_times, on='process_id')
 
-    # Row level features
+    # Return phase definition
     df['return_phase'] = df.phase + '_' + np.where(df.return_drain == True, 'drain',
                                           np.where(df.return_caustic == True, 'caus',
                                           np.where(df.return_acid == True, 'ac',
                                           np.where(df.return_recovery_water == True, 'rec_water', 'none'))))
 
-    if phase_defs is None:
-        normal_phases = list(df.return_phase.value_counts()[df.return_phase.value_counts() > 300000].reset_index()['index'])
+    if return_phase_defs is None:
+        return_phases = list(df.return_phase.value_counts()[df.return_phase.value_counts() > 300000].reset_index()['index'])
     else:
-        normal_phases = phase_defs
-    df['return_phase'] = np.where(df.return_phase.isin(normal_phases), df.return_phase, 'other')
+        return_phases = return_phase_defs
+    df['return_phase'] = np.where(df.return_phase.isin(return_phases), df.return_phase, 'other')
 
+    # Supply phase definition
+    df['supply_phase'] = df.phase + '_' + np.where(df.supply_pre_rinse == True, 'pre_rin',
+                                                   np.where(df.supply_caustic == True, 'caus',
+                                                            np.where(df.supply_acid == True, 'ac',
+                                                                     np.where(df.supply_clean_water == True,
+                                                                              'clean_water', 'none'))))
+
+    if supply_phase_defs is None:
+        supply_phases = list(
+            df.supply_phase.value_counts()[df.supply_phase.value_counts() > 100000].reset_index()['index'])
+    else:
+        supply_phases = supply_phase_defs
+    df['supply_phase'] = np.where(df.supply_phase.isin(supply_phases), df.supply_phase, 'other')
+
+
+    # Other process-timestamp-level features
     df['return_flow'] = np.maximum(0, df.return_flow)
+    df['supply_flow'] = np.maximum(0, df.supply_flow)
     df['total_flow'] = df.return_flow * df.return_turbidity
     df['phase_elapse_end'] = (
             df.groupby(['process_id', 'phase']).timestamp.transform('max') - df.timestamp).dt.seconds
@@ -58,8 +76,8 @@ def preprocess_data(df, start_times, phase_defs=None):
     print('Successfully calculated process-timestamp-level features.')
     print('')
 
-    if phase_defs is None:
-        return df, normal_phases
+    if return_phase_defs is None:
+        return df, return_phases, supply_phases
     else:
         return df
 

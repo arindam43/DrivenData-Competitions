@@ -1,7 +1,7 @@
 from importlib import reload
 import pandas as pd
 import numpy as np
-import re, os, sys, itertools, time, datetime
+import os, sys, itertools, time, datetime
 
 try:
     for module in ['FeatureEngineering', 'Modeling', 'Predict', 'Ingest']:
@@ -21,8 +21,8 @@ if 'raw_data' not in locals():
     raw_data, labels, metadata, test_data, start_times = ingest_data(path)
 
     # Pre-process data
-    raw_data, return_phases = preprocess_data(raw_data, start_times)
-    test_data = preprocess_data(test_data, start_times, return_phases)
+    raw_data, return_phases, supply_phases = preprocess_data(raw_data, start_times, test_data)
+    test_data = preprocess_data(test_data, start_times, test_data, return_phases, supply_phases)
 
     # Pre-process metadata by converting the one-hot encoded recipe types to a single column
     # Only 3 recipe types in total: pre_rinse + caustic, all phases, and acid only
@@ -41,8 +41,7 @@ else:
 
 
 # Create walk forward train/validation splits
-validation_results = pd.DataFrame(columns=['Model_Type', 'Train_Ratio',
-                                           'Num_Leaves', 'Min_Data_In_Leaf', 'Feature_Fraction', 'Min_Hessian',
+validation_results = pd.DataFrame(columns=['Model_Type', 'Train_Ratio', 'Num_Leaves', 'Min_Data_In_Leaf', 'Min_Hessian',
                                            'Best_MAPE', 'Best_Num_Iters'])
 response = 'final_rinse_total_turbidity_liter'
 train_val_ratios = list(range(40, 53, 4))  # training set sizes of 40, 44, 48, and 52 days
@@ -76,12 +75,10 @@ for train_ratio in train_val_ratios:
     # Hyperparameter tuning - simple grid search
     if modeling_approach == 'parameter_tuning':
         leaves_tuning = [31, 45, 63, 75, 90]
-        min_data_in_leaf_tuning = [10]
-        feature_fraction_tuning = [1]
-        min_sum_hessian_in_leaf_tuning = [10, 25, 40, 55, 70]
+        min_data_tuning = [10]
+        min_hessian_tuning = [10, 25, 40, 55, 70]
 
-        tuning_grid = list(itertools.product(leaves_tuning, min_data_in_leaf_tuning, feature_fraction_tuning,
-                                             min_sum_hessian_in_leaf_tuning))
+        tuning_grid = list(itertools.product(leaves_tuning, min_data_tuning, min_hessian_tuning))
         counter = 1
 
         for tuning_params in tuning_grid:
@@ -89,47 +86,41 @@ for train_ratio in train_val_ratios:
             print('Hyperparameter tuning, model ' + str(counter) + ' of ' + str(len(tuning_grid)) + ', train ratio = '
                   + str(train_ratio) + '...')
             print('num_leaves: ' + str(tuning_params[0]))
-            print('min_data_in_leaf: ' + str(tuning_params[1]))
-            print('feature_fraction: ' + str(tuning_params[2]))
-            print('min_hessian: ' + str(tuning_params[3]))
+            print('min_data: ' + str(tuning_params[1]))
+            print('min_hessian: ' + str(tuning_params[2]))
 
             # specify your configurations as a dict
             params = {'pre_rinse': {'boosting_type': 'gbdt', 'objective': 'mape', 'num_leaves': tuning_params[0],
                                     'learning_rate': learning_rate, 'verbose': -1, 'min_data': tuning_params[1],
-                                    'feature_fraction': tuning_params[2], 'min_hessian': tuning_params[3]},
+                                    'min_hessian': tuning_params[2]},
                       'caustic': {'boosting_type': 'gbdt', 'objective': 'mape', 'num_leaves': tuning_params[0],
                                   'learning_rate': learning_rate, 'verbose': -1, 'min_data': tuning_params[1],
-                                  'feature_fraction': tuning_params[2], 'min_hessian': tuning_params[3]},
+                                  'min_hessian': tuning_params[2]},
                       'int_rinse': {'boosting_type': 'gbdt', 'objective': 'mape', 'num_leaves': tuning_params[0],
                                     'learning_rate': learning_rate, 'verbose': -1, 'min_data': tuning_params[1],
-                                    'feature_fraction': tuning_params[2], 'min_hessian': tuning_params[3]},
+                                    'min_hessian': tuning_params[2]},
                       'acid': {'boosting_type': 'gbdt', 'objective': 'mape', 'num_leaves': tuning_params[0],
                                'learning_rate': learning_rate, 'verbose': -1, 'min_data': tuning_params[1],
-                               'feature_fraction': tuning_params[2], 'min_hessian': tuning_params[3]},
-            }
+                               'min_hessian': tuning_params[2]},
+                      }
 
             for model_type in cols_to_include.keys():
-                validation_results = build_models(model_type, processed_train_data, processed_val_data, params[model_type],
-                                                  response, cols_to_include[model_type], train_ratio, max_train_ratio,
-                                                  tuning_params, validation_results)
-
+                validation_results = build_models(model_type, processed_train_data, processed_val_data,
+                                                  params[model_type], response, cols_to_include[model_type],
+                                                  train_ratio, max_train_ratio, tuning_params, validation_results)
             counter = counter + 1
 
     elif modeling_approach == 'single_model':
         tuning_params = ('NA', 'NA', 'NA', 'NA')
         # specify your configurations as a dict
         params = {'pre_rinse': {'boosting_type': 'gbdt', 'objective': 'mape', 'num_leaves': 63,
-                                'learning_rate': learning_rate, 'verbose': -1, 'min_data_in_leaf': 10,
-                                'feature_fraction': 1, 'min_hessian': 55},
+                                'learning_rate': learning_rate, 'verbose': -1, 'min_data': 10,'min_hessian': 55},
                   'caustic': {'boosting_type': 'gbdt', 'objective': 'mape', 'num_leaves': 63,
-                              'learning_rate': learning_rate, 'verbose': -1, 'min_data_in_leaf': 10,
-                              'feature_fraction': 1, 'min_hessian': 40},
+                              'learning_rate': learning_rate, 'verbose': -1, 'min_data': 10,'min_hessian': 40},
                   'int_rinse': {'boosting_type': 'gbdt', 'objective': 'mape', 'num_leaves': 63,
-                                'learning_rate': learning_rate, 'verbose': -1, 'min_data_in_leaf': 10,
-                                'feature_fraction': 1, 'min_hessian': 25},
+                                'learning_rate': learning_rate, 'verbose': -1, 'min_data': 10, 'min_hessian': 25},
                   'acid': {'boosting_type': 'gbdt', 'objective': 'mape', 'num_leaves': 31,
-                           'learning_rate': learning_rate, 'verbose': -1, 'min_data_in_leaf': 10,
-                           'feature_fraction': 1, 'min_hessian': 70}}
+                           'learning_rate': learning_rate, 'verbose': -1, 'min_data': 10, 'min_hessian': 70}}
 
         for model_type in cols_to_include.keys():
             validation_results = build_models(model_type, processed_train_data, processed_val_data, params[model_type],
@@ -141,7 +132,7 @@ for train_ratio in train_val_ratios:
 
 # Summarize validation results
 validation_results.Best_Num_Iters = validation_results.Best_Num_Iters.astype(int)
-validation_summary = validation_results.groupby(['Model_Type', 'Num_Leaves', 'Min_Data_In_Leaf', 'Feature_Fraction', 'Min_Hessian']).\
+validation_summary = validation_results.groupby(['Model_Type', 'Num_Leaves', 'Min_Data_In_Leaf', 'Min_Hessian']).\
     agg({'Best_MAPE': np.mean, 'Best_Num_Iters': np.median}).reset_index()
 validation_summary.Best_Num_Iters = validation_summary.Best_Num_Iters.astype(int)
 validation_summary = validation_summary.loc[validation_summary.groupby('Model_Type')['Best_MAPE'].idxmin()]
