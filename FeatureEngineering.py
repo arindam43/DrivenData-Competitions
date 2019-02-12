@@ -1,4 +1,5 @@
 import pandas as pd
+import numpy as np
 import re
 
 
@@ -6,12 +7,16 @@ def create_model_datasets(df_train, df_test, start_times, labels, metadata, path
 
     # Create normalization lookup tables
     train_lookup = df_train.groupby(['object_id', 'return_phase']).\
-        agg({'supply_flow':'median', 'return_flow':'median', 'return_conductivity': 'median'}).\
-        reset_index()
-    train_lookup.columns = ['object_id', 'return_phase', 'median_supply_flow', 'median_return_flow',
-                            'median_conductivity']
-    df_train = df_train.merge(train_lookup, on=['object_id', 'return_phase']).sort_values(by='timestamp')
-    df_test = df_test.merge(train_lookup, on=['object_id', 'return_phase']).sort_values(by='timestamp')
+        agg({'return_flow': 'median', 'return_conductivity': 'median'}).reset_index()
+    train_lookup.columns = ['object_id', 'return_phase', 'median_return_flow', 'median_conductivity']
+    df_train = df_train.merge(train_lookup, on=['object_id', 'return_phase'])
+    df_test = df_test.merge(train_lookup, on=['object_id', 'return_phase'])
+
+    train_lookup = df_train.groupby(['object_id', 'supply_phase']).\
+        agg({'supply_flow': 'median', 'supply_pressure': 'median'}).reset_index()
+    train_lookup.columns = ['object_id', 'supply_phase', 'median_supply_flow', 'median_supply_pressure']
+    df_train = df_train.merge(train_lookup, on=['object_id', 'supply_phase'], how='left').sort_values(by='timestamp')
+    df_test = df_test.merge(train_lookup, on=['object_id', 'supply_phase'], how='left').sort_values(by='timestamp')
 
     # Engineer phase-level features on train, validation, and test sets
     print('Engineering features on train, ' + val_or_test + ' sets...')
@@ -64,7 +69,7 @@ def engineer_features(df, timestamps):
     # Normalize flows using historical averages
     df['norm_supply_flow'] = df.supply_flow / df.median_supply_flow
     df['norm_return_flow'] = df.return_flow / df.median_return_flow
-    df['norm_conductivity'] = df.return_conductivity / df.median_conductivity
+    df['norm_supply_pressure'] = df.supply_pressure - df.median_supply_pressure
     df['norm_turb_flow'] = df.norm_return_flow * df.return_turbidity
 
     # Return-phase-level features
@@ -144,6 +149,7 @@ def calculate_features(df_groupby, level):
                                }).reset_index()
     elif level == 'supply_phase':
         output = pd.DataFrame({'supply_flow': df_groupby.supply_flow.sum(),
+                               'supply_pressure': df_groupby.norm_supply_pressure.min(),
                                'supply_phase_duration': (df_groupby.timestamp.max() -
                                                   df_groupby.timestamp.min()).astype('timedelta64[s]'),
                                }).reset_index()

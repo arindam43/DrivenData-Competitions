@@ -15,7 +15,6 @@ def subset_modeling_columns(processed_train_data):
     flow_cols = set(filter(lambda x: re.search(r'(?=.*flow)', x), list(processed_train_data.columns)))
     turb_cols = set(filter(lambda x: re.search(r'(?=.*turb)', x), list(processed_train_data.columns)))
     supply_cols = set(filter(lambda x: re.search(r'(?=.*supply)', x), list(processed_train_data.columns)))
-
     none_cols = set(filter(lambda x: re.search(r'(?=.*none|row_count.*)', x), list(processed_train_data.columns)))
 
     cols_to_include = {'pre_rinse': list(set(filter(lambda x: re.search(r'(?=.*pre_rinse)', x),
@@ -26,7 +25,7 @@ def subset_modeling_columns(processed_train_data):
                                                       processed_train_data.columns))) - none_cols - flow_cols) + non_phase_cols_short,
                        'int_rinse': list(set(filter(lambda x: re.search(r'(?=.*pre_rinse|.*caustic|.*int_rinse)', x),
                                                     list(
-                                                        processed_train_data.columns))) - none_cols - flow_cols - supply_cols) + non_phase_cols_full,
+                                                        processed_train_data.columns))) - none_cols - flow_cols) + non_phase_cols_full,
                        'acid': list(
                            set(filter(lambda x: re.search(r'(?=.*pre_rinse|.*caustic|.*int_rinse|.*acid|.*other)', x),
                                       list(
@@ -96,7 +95,7 @@ def build_lgbm_test_datasets(full_train_data, test_data, response, cols_to_inclu
 
 
 def build_models(model_type, processed_train_data, processed_val_data, params, response, cols_to_include,
-                 train_ratio, max_train_ratio, tuning_params, validation_results):
+                 train_ratio, max_train_ratio, tuning_params, validation_results, visualize):
 
     # Build lightgbm datasets from train and test data
     # Must be repeated for each model to properly simulate data censoring ('cols_to_include' parameter)
@@ -117,7 +116,7 @@ def build_models(model_type, processed_train_data, processed_val_data, params, r
     modeling_data = build_lgbm_validation_datasets(processed_train_data, processed_val_data, model_type, response,
                                                    cols_to_include=cols_to_include)
 
-    if train_ratio == max_train_ratio and model_type == 'acid':
+    if train_ratio == max_train_ratio and visualize is True:
         # explain the model's predictions using SHAP values
         # (same syntax works for LightGBM, CatBoost, and scikit-learn models)
         # matplotlib.pyplot.close()

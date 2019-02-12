@@ -21,8 +21,8 @@ if 'raw_data' not in locals():
     raw_data, labels, metadata, test_data, start_times = ingest_data(path)
 
     # Pre-process data
-    raw_data, return_phases, supply_phases = preprocess_data(raw_data, start_times, test_data)
-    test_data = preprocess_data(test_data, start_times, test_data, return_phases, supply_phases)
+    raw_data, return_phases, supply_phases = preprocess_data(raw_data, start_times)
+    test_data = preprocess_data(test_data, start_times, return_phases, supply_phases)
 
     # Pre-process metadata by converting the one-hot encoded recipe types to a single column
     # Only 3 recipe types in total: pre_rinse + caustic, all phases, and acid only
@@ -32,12 +32,12 @@ if 'raw_data' not in locals():
 else:
     print('Raw data already found, skipping data read and initial pre-processing.')
 
-#
-# if 'train_eda' not in locals():
-#     train_eda = raw_data.describe(percentiles=[0.01, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.99])
-#
-# if 'test_eda' not in locals():
-#     test_eda = test_data.describe(percentiles=[0.01, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.99])
+
+if 'train_eda' not in locals():
+    train_eda = raw_data.groupby('object_id').describe(percentiles=[0.01, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.99])
+
+if 'test_eda' not in locals():
+    test_eda = test_data.describe(percentiles=[0.01, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.99])
 
 
 # Create walk forward train/validation splits
@@ -48,16 +48,17 @@ train_val_ratios = list(range(40, 53, 4))  # training set sizes of 40, 44, 48, a
 max_train_ratio = max(train_val_ratios)
 start_time = time.time()
 
+
 for train_ratio in train_val_ratios:
     print('')
     print('Training with first ' + str(int(train_ratio)) + ' days of training data...')
 
     # Identify which processes will be used for training and which will be used for validation
-    train_processes = pd.DataFrame(start_times.process_id[start_times.day_number <= train_ratio])
+    train_processes = pd.Series(start_times.process_id[start_times.day_number <= train_ratio])
     val_processes = pd.DataFrame(start_times.process_id[start_times.day_number > train_ratio])
 
     # Split data into training and validation sets
-    raw_train_data = raw_data[raw_data.process_id.isin(train_processes.process_id)]
+    raw_train_data = raw_data[raw_data.process_id.isin(train_processes)]
     raw_val_data = raw_data[raw_data.process_id.isin(val_processes.process_id)]
 
     # Process the raw data to create model-ready datasets
@@ -74,8 +75,8 @@ for train_ratio in train_val_ratios:
 
     # Hyperparameter tuning - simple grid search
     if modeling_approach == 'parameter_tuning':
-        leaves_tuning = [31, 45, 63, 75, 90]
-        min_data_tuning = [10]
+        leaves_tuning = [31, 45, 63, 75]
+        min_data_tuning = [10, 20]
         min_hessian_tuning = [10, 25, 40, 55, 70]
 
         tuning_grid = list(itertools.product(leaves_tuning, min_data_tuning, min_hessian_tuning))
@@ -107,25 +108,25 @@ for train_ratio in train_val_ratios:
             for model_type in cols_to_include.keys():
                 validation_results = build_models(model_type, processed_train_data, processed_val_data,
                                                   params[model_type], response, cols_to_include[model_type],
-                                                  train_ratio, max_train_ratio, tuning_params, validation_results)
+                                                  train_ratio, max_train_ratio, tuning_params, validation_results, False)
             counter = counter + 1
 
     elif modeling_approach == 'single_model':
         tuning_params = ('NA', 'NA', 'NA', 'NA')
         # specify your configurations as a dict
         params = {'pre_rinse': {'boosting_type': 'gbdt', 'objective': 'mape', 'num_leaves': 63,
-                                'learning_rate': learning_rate, 'verbose': -1, 'min_data': 10,'min_hessian': 55},
+                                'learning_rate': learning_rate, 'verbose': -1, 'min_data': 10,'min_hessian': 40},
                   'caustic': {'boosting_type': 'gbdt', 'objective': 'mape', 'num_leaves': 63,
                               'learning_rate': learning_rate, 'verbose': -1, 'min_data': 10,'min_hessian': 40},
                   'int_rinse': {'boosting_type': 'gbdt', 'objective': 'mape', 'num_leaves': 63,
                                 'learning_rate': learning_rate, 'verbose': -1, 'min_data': 10, 'min_hessian': 25},
-                  'acid': {'boosting_type': 'gbdt', 'objective': 'mape', 'num_leaves': 31,
-                           'learning_rate': learning_rate, 'verbose': -1, 'min_data': 10, 'min_hessian': 70}}
+                  'acid': {'boosting_type': 'gbdt', 'objective': 'mape', 'num_leaves': 63,
+                           'learning_rate': learning_rate, 'verbose': -1, 'min_data': 10, 'min_hessian': 25}}
 
         for model_type in cols_to_include.keys():
             validation_results = build_models(model_type, processed_train_data, processed_val_data, params[model_type],
                                               response, cols_to_include[model_type], train_ratio, max_train_ratio,
-                                              tuning_params, validation_results)
+                                              tuning_params, validation_results, True)
 
     else:
         print('Invalid value for modeling approach, must be parameter_tuning or single_model.')
