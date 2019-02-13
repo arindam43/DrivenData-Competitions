@@ -51,10 +51,9 @@ def preprocess_data(df, start_times, return_phase_defs=None, supply_phase_defs=N
 
     # Supply phase definition
     df['supply_phase'] = df.phase + '_' + np.where(df.supply_pre_rinse == True, 'pre_rin',
-                                                   np.where(df.supply_caustic == True, 'caus',
-                                                            np.where(df.supply_acid == True, 'ac',
-                                                                     np.where(df.supply_clean_water == True,
-                                                                              'clean_water', 'none'))))
+                                          np.where(df.supply_caustic == True, 'caus',
+                                          np.where(df.supply_acid == True, 'ac',
+                                          np.where(df.supply_clean_water == True, 'clean_water', 'none'))))
 
     if supply_phase_defs is None:
         supply_phases = list(

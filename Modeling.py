@@ -6,31 +6,42 @@ import shap
 import matplotlib
 
 
-def subset_modeling_columns(processed_train_data):
+def subset_modeling_columns(processed_train_data, cols_subset=None):
     # For each of the four models, identify which columns should be kept from overall set
     # Simulates data censoring in test data
     non_phase_cols_short = ['object_id', 'recipe_type']
     non_phase_cols_full = ['object_id']
 
-    flow_cols = set(filter(lambda x: re.search(r'(?=.*flow)', x), list(processed_train_data.columns)))
-    turb_cols = set(filter(lambda x: re.search(r'(?=.*turb)', x), list(processed_train_data.columns)))
-    supply_cols = set(filter(lambda x: re.search(r'(?=.*supply)', x), list(processed_train_data.columns)))
-    none_cols = set(filter(lambda x: re.search(r'(?=.*none|row_count.*)', x), list(processed_train_data.columns)))
+    if cols_subset is None:
+        pre_rinse_cols = set(filter(lambda x: re.search(r'(?=.*flow|.*conductivity)', x), list(processed_train_data.columns)))
+        caustic_cols = set(filter(lambda x: re.search(r'(?=.*flow|.*conductivity|.*temp)', x), list(processed_train_data.columns)))
+        int_rinse_cols = set(filter(lambda x: re.search(r'(?=.*flow|.*duration)', x), list(processed_train_data.columns)))
+        acid_cols = set(filter(lambda x: re.search(r'(?=.*turb)', x), list(processed_train_data.columns)))
+        none_cols = set(filter(lambda x: re.search(r'(?=.*none|row_count.*)', x), list(processed_train_data.columns)))
 
-    cols_to_include = {'pre_rinse': list(set(filter(lambda x: re.search(r'(?=.*pre_rinse)', x),
-                                                    list(
-                                                        processed_train_data.columns))) - none_cols - flow_cols) + non_phase_cols_short,
-                       'caustic': list(set(filter(lambda x: re.search(r'(?=.*pre_rinse|.*caustic)', x),
-                                                  list(
-                                                      processed_train_data.columns))) - none_cols - flow_cols) + non_phase_cols_short,
-                       'int_rinse': list(set(filter(lambda x: re.search(r'(?=.*pre_rinse|.*caustic|.*int_rinse)', x),
-                                                    list(
-                                                        processed_train_data.columns))) - none_cols - flow_cols) + non_phase_cols_full,
-                       'acid': list(
-                           set(filter(lambda x: re.search(r'(?=.*pre_rinse|.*caustic|.*int_rinse|.*acid|.*other)', x),
-                                      list(
-                                          processed_train_data.columns))) - none_cols - turb_cols - supply_cols) + non_phase_cols_full
-                       }
+        cols_to_include = {'pre_rinse': list(set(filter(lambda x: re.search(r'(?=.*pre_rinse)', x),
+                                                        list(processed_train_data.columns))) - none_cols - pre_rinse_cols) + non_phase_cols_short,
+                           'caustic': list(set(filter(lambda x: re.search(r'(?=.*pre_rinse|.*caustic)', x),
+                                                      list(processed_train_data.columns))) - none_cols - caustic_cols) + non_phase_cols_short,
+                           'int_rinse': list(set(filter(lambda x: re.search(r'(?=.*pre_rinse|.*caustic|.*int_rinse)', x),
+                                          list(processed_train_data.columns))) - none_cols - int_rinse_cols) + non_phase_cols_full,
+                           'acid': list(set(filter(lambda x: re.search(r'(?=.*pre_rinse|.*caustic|.*int_rinse|.*acid|.*other)', x),
+                                   list(processed_train_data.columns))) - none_cols - acid_cols) + non_phase_cols_full
+                           }
+
+    else:
+        none_cols = set(filter(lambda x: re.search(r'(?=.*none|row_count.*)', x), list(processed_train_data.columns)))
+        exclude_cols = set(filter(lambda x: re.search(r'(?=.*' + cols_subset + ')', x), list(processed_train_data.columns)))
+
+        cols_to_include = {'pre_rinse': list(set(filter(lambda x: re.search(r'(?=.*pre_rinse)', x),
+                                                        list(processed_train_data.columns))) - exclude_cols - none_cols) + non_phase_cols_short,
+                           'caustic': list(set(filter(lambda x: re.search(r'(?=.*pre_rinse|.*caustic)', x),
+                                                      list(processed_train_data.columns))) - exclude_cols - none_cols) + non_phase_cols_short,
+                           'int_rinse': list(set(filter(lambda x: re.search(r'(?=.*pre_rinse|.*caustic|.*int_rinse)', x),
+                                          list(processed_train_data.columns))) - exclude_cols - none_cols) + non_phase_cols_full,
+                           'acid': list(set(filter(lambda x: re.search(r'(?=.*pre_rinse|.*caustic|.*int_rinse|.*acid|.*other)', x),
+                                   list(processed_train_data.columns))) - exclude_cols - none_cols) + non_phase_cols_full
+                           }
 
     return cols_to_include
 
@@ -95,7 +106,7 @@ def build_lgbm_test_datasets(full_train_data, test_data, response, cols_to_inclu
 
 
 def build_models(model_type, processed_train_data, processed_val_data, params, response, cols_to_include,
-                 train_ratio, max_train_ratio, tuning_params, validation_results, visualize):
+                 train_ratio, max_train_ratio, tuning_params, validation_results, cols, visualize):
 
     # Build lightgbm datasets from train and test data
     # Must be repeated for each model to properly simulate data censoring ('cols_to_include' parameter)
@@ -132,8 +143,12 @@ def build_models(model_type, processed_train_data, processed_val_data, params, r
         shap.summary_plot(shap_values, modeling_data['eval'].data, plot_type='bar', max_display=500,
                           title=shap_title)
 
+    if cols is None:
+        cols = 'NA'
+
     validation_results = validation_results.append(pd.DataFrame([[model_type,
                                                                   train_ratio,
+                                                                  cols,
                                                                   tuning_params[0],
                                                                   tuning_params[1],
                                                                   tuning_params[2],

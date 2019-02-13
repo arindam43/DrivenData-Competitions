@@ -70,6 +70,7 @@ def engineer_features(df, timestamps):
     df['norm_supply_flow'] = df.supply_flow / df.median_supply_flow
     df['norm_return_flow'] = df.return_flow / df.median_return_flow
     df['norm_supply_pressure'] = df.supply_pressure - df.median_supply_pressure
+    df['norm_conductivity'] = df.return_conductivity - df.median_conductivity
     df['norm_turb_flow'] = df.norm_return_flow * df.return_turbidity
 
     # Return-phase-level features
@@ -144,6 +145,7 @@ def calculate_features(df_groupby, level):
     if level == 'return_phase':
         output = pd.DataFrame({'return_norm_turb': df_groupby.norm_turb_flow.sum(),
                                'return_total_flow': df_groupby.total_flow.sum(),
+                               'return_conductivity': df_groupby.norm_conductivity.min(),
                                'return_phase_duration': (df_groupby.timestamp.max() -
                                                   df_groupby.timestamp.min()).astype('timedelta64[s]'),
                                }).reset_index()
