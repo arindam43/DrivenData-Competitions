@@ -67,12 +67,12 @@ def preprocess_data(df, start_times, return_phase_defs=None, supply_phase_defs=N
     df['return_flow'] = np.maximum(0, df.return_flow)
     df['supply_flow'] = np.maximum(0, df.supply_flow)
 
-    df['total_flow'] = df.return_flow * df.return_turbidity
+    df['return_residue'] = df.return_flow * df.return_turbidity
 
     df['phase_elapse_end'] = (
             df.groupby(['process_id', 'phase']).timestamp.transform('max') - df.timestamp).dt.seconds
     df['end_turb'] = df.return_turbidity * (df.phase_elapse_end <= 40)
-    df['end_flow'] = df.total_flow * (df.phase_elapse_end <= 40)
+    df['end_residue'] = df.return_residue * (df.phase_elapse_end <= 40)
 
     print('Successfully calculated process-timestamp-level features.')
     print('')

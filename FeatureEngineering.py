@@ -69,9 +69,10 @@ def engineer_features(df, timestamps):
     # Normalize flows using historical averages
     df['norm_supply_flow'] = df.supply_flow / df.median_supply_flow
     df['norm_return_flow'] = df.return_flow / df.median_return_flow
+    df['norm_turb'] = df.norm_return_flow * df.return_turbidity
+
     df['norm_supply_pressure'] = df.supply_pressure - df.median_supply_pressure
     df['norm_conductivity'] = df.return_conductivity - df.median_conductivity
-    df['norm_turb_flow'] = df.norm_return_flow * df.return_turbidity
 
     # Return-phase-level features
     group_cols = ['process_id', 'object_id', 'pipeline', 'return_phase']
@@ -143,25 +144,26 @@ def engineer_features(df, timestamps):
 
 def calculate_features(df_groupby, level):
     if level == 'return_phase':
-        output = pd.DataFrame({'return_norm_turb': df_groupby.norm_turb_flow.sum(),
-                               'return_total_flow': df_groupby.total_flow.sum(),
-                               'return_conductivity': df_groupby.norm_conductivity.min(),
-                               'return_phase_duration': (df_groupby.timestamp.max() -
-                                                  df_groupby.timestamp.min()).astype('timedelta64[s]'),
+        output = pd.DataFrame({'return_turb': df_groupby.norm_turb.sum(),
+                               'return_residue': df_groupby.return_residue.sum(),
+                               'return_cond': df_groupby.norm_conductivity.min(),
+                               'return_duration': (df_groupby.timestamp.max() -
+                                                   df_groupby.timestamp.min()).astype('timedelta64[s]'),
                                }).reset_index()
     elif level == 'supply_phase':
         output = pd.DataFrame({'supply_flow': df_groupby.supply_flow.sum(),
                                'supply_pressure': df_groupby.norm_supply_pressure.min(),
-                               'supply_phase_duration': (df_groupby.timestamp.max() -
-                                                  df_groupby.timestamp.min()).astype('timedelta64[s]'),
+                               'supply_duration': (df_groupby.timestamp.max() -
+                                                   df_groupby.timestamp.min()).astype('timedelta64[s]'),
                                }).reset_index()
     elif level == 'phase':
         output = pd.DataFrame({'row_count': df_groupby.phase.count(),
-                               'end_turb': df_groupby.end_turb.mean(),
-                               'end_flow': df_groupby.end_flow.sum(),
-                               'min_temp': df_groupby.return_temperature.min(),
 
-                               'obj_low_level': df_groupby.object_low_level.sum() / (df_groupby.timestamp.max() -
+                               'end_turb': df_groupby.end_turb.mean(),
+                               'end_residue': df_groupby.end_residue.sum(),
+
+                               'return_temp': df_groupby.return_temperature.min(),
+                               'obj_low_lev': df_groupby.object_low_level.sum() / (df_groupby.timestamp.max() -
                                                                                      df_groupby.timestamp.min()).astype(
                                    'timedelta64[s]'),
                                'lsh_caus': df_groupby.tank_lsh_caustic.sum() / (df_groupby.timestamp.max() -

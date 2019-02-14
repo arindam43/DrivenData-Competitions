@@ -45,6 +45,8 @@ validation_results = pd.DataFrame(columns=['Model_Type', 'Train_Ratio', 'Exclude
                                            'Num_Leaves', 'Min_Data_In_Leaf', 'Min_Hessian',
                                            'Best_MAPE', 'Best_Num_Iters'])
 response = 'final_rinse_total_turbidity_liter'
+column_selection_mode = 'none'
+modeling_approach = 'single_model'
 train_val_ratios = list(range(40, 53, 4))  # training set sizes of 40, 44, 48, and 52 days
 max_train_ratio = max(train_val_ratios)
 start_time = time.time()
@@ -68,15 +70,12 @@ for train_ratio in train_val_ratios:
         processed_val_data = create_model_datasets(raw_train_data, raw_val_data, start_times, labels, metadata,
                                                    path, val_or_test='validation')
 
-    column_selection_mode = 'None'
-
-    if column_selection_mode == 'Grid':
-        flow_turb = ['flow', 'turb']
-        cond = ['row_count', 'conductivity']
+    if column_selection_mode == 'grid':
+        flow_turb = ['flow|.*turb', 'flow|.*residue', 'turb', 'residue']
+        cond = ['row_count', 'cond']
         supp = ['row_count', 'supply']
         temp = ['row_count', 'temp']
-        dur = ['row_count', 'duration']
-        cols_subset = list(itertools.product(flow_turb, cond, supp, temp, dur))
+        cols_subset = list(itertools.product(flow_turb, cond, supp, temp))
     else:
         cols_subset = [None]
 
@@ -88,7 +87,6 @@ for train_ratio in train_val_ratios:
         # Create dictionary of columns to be included in each of the four models
         cols_to_include = subset_modeling_columns(processed_train_data, cols)
 
-        modeling_approach = 'single_model'
         learning_rate = 0.02
 
         # Hyperparameter tuning - simple grid search
