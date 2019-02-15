@@ -121,7 +121,7 @@ def build_models(model_type, processed_train_data, processed_val_data, params, r
                           num_boost_round=5000,
                           valid_sets=modeling_data['eval'],
                           verbose_eval=False,
-                          early_stopping_rounds=25
+                          early_stopping_rounds=40
                           )
 
     modeling_data = build_lgbm_validation_datasets(processed_train_data, processed_val_data, model_type, response,
@@ -151,7 +151,7 @@ def build_models(model_type, processed_train_data, processed_val_data, params, r
                                                                   cols,
                                                                   tuning_params[0],
                                                                   tuning_params[1],
-                                                                  tuning_params[2],
+                                                                  str(tuning_params[2]),
                                                                   round(gbm_train.best_score['valid_0']['mape'], 5),
                                                                   gbm_train.best_iteration]],
                                                    columns=validation_results.columns))
