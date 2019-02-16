@@ -130,13 +130,6 @@ def engineer_features(df, timestamps):
     # Other process-level features
     df_final_output = df_final_output.merge(timestamps, on='process_id')
     df_final_output = df_final_output.sort_values(by=['object_id', 'start_time'])
-    #
-    # df_final_output['hour_of_day'] = df_final_output.start_time.dt.hour
-
-    # df_final_output['weekday_name'] = df_final_output.start_time.dt.dayofweek
-
-    # df_final_output['cumulative_runs_day'] = df_final_output.groupby(['pipeline', 'day_of_week']).\
-    #                                                          cumcount()
 
     return df_final_output
 
@@ -144,11 +137,17 @@ def engineer_features(df, timestamps):
 def calculate_features(df_groupby, level):
     if level == 'return_phase':
         output = pd.DataFrame({'return_turb': df_groupby.norm_turb.sum(),
-                               #'return_turb_max': df_groupby.rolling_turb.max(),
                                'return_residue': df_groupby.return_residue.sum(),
                                'return_cond': df_groupby.norm_conductivity.min(),
                                'return_duration': (df_groupby.timestamp.max() -
                                                    df_groupby.timestamp.min()).astype('timedelta64[s]'),
+
+                               'lsh_caus': df_groupby.tank_lsh_caustic.sum() / (df_groupby.timestamp.max() -
+                                                                                df_groupby.timestamp.min()).astype(
+                                   'timedelta64[s]'),
+                               'obj_low_lev': df_groupby.object_low_level.sum() / (df_groupby.timestamp.max() -
+                                                                                   df_groupby.timestamp.min()).astype(
+                                   'timedelta64[s]'),
                                }).reset_index()
     elif level == 'supply_phase':
         output = pd.DataFrame({'supply_flow': df_groupby.supply_flow.sum(),
@@ -163,15 +162,10 @@ def calculate_features(df_groupby, level):
                                'end_residue': df_groupby.end_residue.sum(),
 
                                'return_temp': df_groupby.return_temperature.min(),
-                               'obj_low_lev': df_groupby.object_low_level.sum() / (df_groupby.timestamp.max() -
-                                                                                     df_groupby.timestamp.min()).astype(
-                                   'timedelta64[s]'),
-                               'lsh_caus': df_groupby.tank_lsh_caustic.sum() / (df_groupby.timestamp.max() -
-                                                                                df_groupby.timestamp.min()).astype(
-                                   'timedelta64[s]')
+
                                }).reset_index()
     else:
-        output = pd.DataFrame({'phase_duration': (df_groupby.timestamp.max() -
+        output = pd.DataFrame({'total_duration': (df_groupby.timestamp.max() -
                                                   df_groupby.timestamp.min()).astype('timedelta64[s]')
                                }).reset_index()
 
@@ -180,8 +174,8 @@ def calculate_features(df_groupby, level):
 
 def remove_outliers(processed_train_data):
     # Remove processed with too short or long of train duration
-    processed_train_data = processed_train_data[(processed_train_data.phase_duration > 30) &
-                                                (processed_train_data.phase_duration < 10000)]
+    processed_train_data = processed_train_data[(processed_train_data.total_duration > 30) &
+                                                (processed_train_data.total_duration < 10000)]
 
     return processed_train_data
 

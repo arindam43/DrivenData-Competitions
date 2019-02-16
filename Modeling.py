@@ -14,9 +14,9 @@ def subset_modeling_columns(processed_train_data, cols_subset=None):
 
     if cols_subset is None:
         pre_rinse_cols = set(filter(lambda x: re.search(r'(?=.*residue|.*cond|.*temp)', x), list(processed_train_data.columns)))
-        caustic_cols = set(filter(lambda x: re.search(r'(?=.*residue|.*cond|.*temp)', x), list(processed_train_data.columns)))
-        int_rinse_cols = set(filter(lambda x: re.search(r'(?=.*flow|.*residue)', x), list(processed_train_data.columns)))
-        acid_cols = set(filter(lambda x: re.search(r'(?=.*flow|.*turb|.*supply)', x), list(processed_train_data.columns)))
+        caustic_cols = set(filter(lambda x: re.search(r'(?=.*residue|.*cond|.*temp|.*duration)', x), list(processed_train_data.columns)))
+        int_rinse_cols = set(filter(lambda x: re.search(r'(?=.*flow|.*residue|.*obj_low)', x), list(processed_train_data.columns)))
+        acid_cols = set(filter(lambda x: re.search(r'(?=.*flow|.*turb|.*supply|.*duration)', x), list(processed_train_data.columns)))
         none_cols = set(filter(lambda x: re.search(r'(?=.*none|row_count.*)', x), list(processed_train_data.columns)))
 
         cols_to_include = {'pre_rinse': list(set(filter(lambda x: re.search(r'(?=.*pre_rinse)', x),
@@ -30,17 +30,25 @@ def subset_modeling_columns(processed_train_data, cols_subset=None):
                            }
 
     else:
+        pre_rinse_cols = set(
+            filter(lambda x: re.search(r'(?=.*residue|.*cond|.*temp)', x), list(processed_train_data.columns)))
+        caustic_cols = set(
+            filter(lambda x: re.search(r'(?=.*residue|.*cond|.*temp)', x), list(processed_train_data.columns)))
+        int_rinse_cols = set(
+            filter(lambda x: re.search(r'(?=.*flow|.*residue)', x), list(processed_train_data.columns)))
+        acid_cols = set(
+            filter(lambda x: re.search(r'(?=.*flow|.*turb|.*supply)', x), list(processed_train_data.columns)))
         none_cols = set(filter(lambda x: re.search(r'(?=.*none|row_count.*)', x), list(processed_train_data.columns)))
         exclude_cols = set(filter(lambda x: re.search(r'(?=.*' + cols_subset + ')', x), list(processed_train_data.columns)))
 
         cols_to_include = {'pre_rinse': list(set(filter(lambda x: re.search(r'(?=.*pre_rinse)', x),
-                                                        list(processed_train_data.columns))) - exclude_cols - none_cols) + non_phase_cols_short,
+                                                        list(processed_train_data.columns))) - pre_rinse_cols - exclude_cols - none_cols) + non_phase_cols_short,
                            'caustic': list(set(filter(lambda x: re.search(r'(?=.*pre_rinse|.*caustic)', x),
-                                                      list(processed_train_data.columns))) - exclude_cols - none_cols) + non_phase_cols_short,
+                                                      list(processed_train_data.columns))) - caustic_cols - exclude_cols - none_cols) + non_phase_cols_short,
                            'int_rinse': list(set(filter(lambda x: re.search(r'(?=.*pre_rinse|.*caustic|.*int_rinse)', x),
-                                          list(processed_train_data.columns))) - exclude_cols - none_cols) + non_phase_cols_full,
+                                          list(processed_train_data.columns))) - int_rinse_cols - exclude_cols - none_cols) + non_phase_cols_full,
                            'acid': list(set(filter(lambda x: re.search(r'(?=.*pre_rinse|.*caustic|.*int_rinse|.*acid|.*other)', x),
-                                   list(processed_train_data.columns))) - exclude_cols - none_cols) + non_phase_cols_full
+                                   list(processed_train_data.columns))) - acid_cols - exclude_cols - none_cols) + non_phase_cols_full
                            }
 
     return cols_to_include
