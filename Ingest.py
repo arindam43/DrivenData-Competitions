@@ -1,6 +1,5 @@
 import pandas as pd
 import numpy as np
-import re
 pd.options.mode.chained_assignment = None
 
 
@@ -61,7 +60,6 @@ def preprocess_data(df, start_times, return_phase_defs=None, supply_phase_defs=N
     else:
         supply_phases = supply_phase_defs
     df['supply_phase'] = np.where(df.supply_phase.isin(supply_phases), df.supply_phase, 'other')
-
 
     # Other process-timestamp-level features
     df['return_flow'] = np.maximum(0, df.return_flow)

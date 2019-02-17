@@ -1,21 +1,16 @@
 import pandas as pd
-import numpy as np
 import sys
 import os
 from importlib import reload
 from datetime import datetime
-import re
 
 try:
-    reload(sys.modules['FeatureEngineering'])
+    for module in ['FeatureEngineering', 'Modeling']:
+        reload(sys.modules[module])
 except KeyError:
     pass
+
 from FeatureEngineering import create_model_datasets
-
-try:
-    reload(sys.modules['Modeling'])
-except KeyError:
-    pass
 from Modeling import build_test_models
 
 
@@ -27,8 +22,8 @@ def predict_test_values(raw_data, test_data, start_times, metadata, path,
 
     # Create model-ready datasets from the full training data and test data
     processed_full_train_data, \
-    processed_test_data = create_model_datasets(raw_data, test_data, start_times, labels, metadata,
-                                                path, val_or_test='test')
+        processed_test_data = create_model_datasets(raw_data, test_data, start_times, labels, metadata,
+                                                    path, val_or_test='test')
 
     # Build the four test models and make the predictions on the set
     for model_type in cols_to_include.keys():
@@ -66,4 +61,4 @@ def write_predictions_to_csv(predictions, test_data, response):
     output_path = current_directory + '\\Predictions\\Test Predictions ' + current_time + ' (Full).csv'
     test_pred_full.to_csv(output_path, index=False)
 
-    print('Test set predictions made at ' + str(current_time) +' saved to csv file.')
+    print('Test set predictions made at ' + str(current_time) + ' saved to csv file.')

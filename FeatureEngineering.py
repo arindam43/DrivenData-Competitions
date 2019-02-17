@@ -1,11 +1,12 @@
 import pandas as pd
-import numpy as np
 import re
 
 
 def create_model_datasets(df_train, df_test, start_times, labels, metadata, path, val_or_test='validation'):
 
     # Create normalization lookup tables
+    print('Creating and merging normalization lookup tables...')
+
     train_lookup = df_train.groupby(['object_id', 'return_phase']).\
         agg({'return_flow': 'median', 'return_conductivity': 'median'}).reset_index()
     train_lookup.columns = ['object_id', 'return_phase', 'median_return_flow', 'median_conductivity']
@@ -17,6 +18,8 @@ def create_model_datasets(df_train, df_test, start_times, labels, metadata, path
     train_lookup.columns = ['object_id', 'supply_phase', 'median_supply_flow', 'median_supply_pressure']
     df_train = df_train.merge(train_lookup, on=['object_id', 'supply_phase'], how='left').sort_values(by='timestamp')
     df_test = df_test.merge(train_lookup, on=['object_id', 'supply_phase'], how='left').sort_values(by='timestamp')
+
+    print('Normalization lookup tables finished.')
 
     # Engineer phase-level features on train, validation, and test sets
     print('Engineering features on train, ' + val_or_test + ' sets...')
@@ -74,100 +77,69 @@ def engineer_features(df, timestamps):
     df['norm_supply_pressure'] = df.supply_pressure - df.median_supply_pressure
     df['norm_conductivity'] = df.return_conductivity - df.median_conductivity
 
-    # Return-phase-level features
-    group_cols = ['process_id', 'object_id', 'pipeline', 'return_phase']
-    df_groupby = df.groupby(group_cols)
-
-    df_output_phase = calculate_features(df_groupby, level='return_phase')
-
-    df_output_phase = pd.pivot_table(df_output_phase,
-                                     index=['process_id', 'object_id', 'pipeline'],
-                                     columns='return_phase',
-                                     values=list(set(df_output_phase.columns) - set(group_cols))).reset_index()
-
-    df_output_phase.columns = [' '.join(col).strip() for col in df_output_phase.columns.values]
-    df_output_phase.columns = df_output_phase.columns.str.replace(' ', '_')
-
-    # Supply-phase-level features
-    group_cols = ['process_id', 'object_id', 'pipeline', 'supply_phase']
-    df_groupby = df.groupby(group_cols)
-
-    df_output_phase2 = calculate_features(df_groupby, level='supply_phase')
-
-    df_output_phase2 = pd.pivot_table(df_output_phase2,
-                                      index=['process_id', 'object_id', 'pipeline'],
-                                      columns='supply_phase',
-                                      values=list(set(df_output_phase2.columns) - set(group_cols))).reset_index()
-
-    df_output_phase2.columns = [' '.join(col).strip() for col in df_output_phase2.columns.values]
-    df_output_phase2.columns = df_output_phase2.columns.str.replace(' ', '_')
-
-    df_output_phase = df_output_phase2.merge(df_output_phase, on=['process_id', 'object_id', 'pipeline'])
-
-    # Phase-level features
-    group_cols = ['process_id', 'object_id', 'pipeline', 'phase']
-    df_groupby = df.groupby(group_cols)
-    df_output_phase2 = calculate_features(df_groupby, level='phase')
-
-    df_output_phase2 = pd.pivot_table(df_output_phase2,
-                                      index=['process_id', 'object_id', 'pipeline'],
-                                      columns='phase',
-                                      values=list(set(df_output_phase2.columns) - set(group_cols))).reset_index()
-
-    df_output_phase2.columns = [' '.join(col).strip() for col in df_output_phase2.columns.values]
-    df_output_phase2.columns = df_output_phase2.columns.str.replace(' ', '_')
-
-    df_output_phase = df_output_phase2.merge(df_output_phase, on=['process_id', 'object_id', 'pipeline'])
-
-    # Process-level aggregations of phase-level features
     group_cols = ['process_id', 'object_id', 'pipeline']
-    df_groupby = df.groupby(group_cols)
 
-    df_output_process = calculate_features(df_groupby, level='process')
+    # Calculate features at various levels of aggregation
+    df_return_phase = calculate_features(df, group_cols, 'return_phase')
+    df_supply_phase = calculate_features(df, group_cols, 'supply_phase', df_return_phase)
+    df_full_phase = calculate_features(df, group_cols, 'phase', df_supply_phase)
+    df_final_output = calculate_features(df, group_cols, 'process', df_full_phase)
 
-    df_final_output = df_output_phase.merge(df_output_process, on=group_cols)
-
-    # Other process-level features
+    # Bring in start times for processed data
     df_final_output = df_final_output.merge(timestamps, on='process_id')
     df_final_output = df_final_output.sort_values(by=['object_id', 'start_time'])
 
     return df_final_output
 
 
-def calculate_features(df_groupby, level):
+def calculate_features(df, base_group_cols, level='process', existing_features=None):
+
+    full_group_cols = base_group_cols + [level] if level != 'process' else base_group_cols
+    df_groupby = df.groupby(full_group_cols)
+
     if level == 'return_phase':
-        output = pd.DataFrame({'return_turb': df_groupby.norm_turb.sum(),
-                               'return_residue': df_groupby.return_residue.sum(),
-                               'return_cond': df_groupby.norm_conductivity.min(),
-                               'return_duration': (df_groupby.timestamp.max() -
-                                                   df_groupby.timestamp.min()).astype('timedelta64[s]'),
-
-                               'lsh_caus': df_groupby.tank_lsh_caustic.sum() / (df_groupby.timestamp.max() -
-                                                                                df_groupby.timestamp.min()).astype(
-                                   'timedelta64[s]'),
-                               'obj_low_lev': df_groupby.object_low_level.sum() / (df_groupby.timestamp.max() -
-                                                                                   df_groupby.timestamp.min()).astype(
-                                   'timedelta64[s]'),
-                               }).reset_index()
+        features = pd.DataFrame({'return_turb': df_groupby.norm_turb.sum(),
+                                 'return_residue': df_groupby.return_residue.sum(),
+                                 'return_cond': df_groupby.norm_conductivity.min(),
+                                 'return_duration': (df_groupby.timestamp.max() -
+                                                     df_groupby.timestamp.min()).astype('timedelta64[s]'),
+                                 }).reset_index()
     elif level == 'supply_phase':
-        output = pd.DataFrame({'supply_flow': df_groupby.supply_flow.sum(),
-                               'supply_pressure': df_groupby.norm_supply_pressure.min(),
-                               'supply_duration': (df_groupby.timestamp.max() -
-                                                   df_groupby.timestamp.min()).astype('timedelta64[s]'),
-                               }).reset_index()
+        features = pd.DataFrame({'supply_flow': df_groupby.supply_flow.sum(),
+                                 'supply_pressure': df_groupby.norm_supply_pressure.min(),
+                                 'supply_duration': (df_groupby.timestamp.max() -
+                                                     df_groupby.timestamp.min()).astype('timedelta64[s]'),
+                                 }).reset_index()
     elif level == 'phase':
-        output = pd.DataFrame({'row_count': df_groupby.phase.count(),
+        features = pd.DataFrame({'row_count': df_groupby.phase.count(),
 
-                               'end_turb': df_groupby.end_turb.mean(),
-                               'end_residue': df_groupby.end_residue.sum(),
+                                 'end_turb': df_groupby.end_turb.mean(),
+                                 'end_residue': df_groupby.end_residue.sum(),
 
-                               'return_temp': df_groupby.return_temperature.min(),
+                                 'return_temp': df_groupby.return_temperature.min(),
 
-                               }).reset_index()
+                                 'lsh_caus': df_groupby.tank_lsh_caustic.sum() / (df_groupby.timestamp.max() -
+                                                                                  df_groupby.timestamp.min()).astype(
+                                     'timedelta64[s]'),
+                                 'obj_low_lev': df_groupby.object_low_level.sum() / (df_groupby.timestamp.max() -
+                                                                                     df_groupby.timestamp.min()).astype(
+                                     'timedelta64[s]')
+                                 }).reset_index()
     else:
-        output = pd.DataFrame({'total_duration': (df_groupby.timestamp.max() -
-                                                  df_groupby.timestamp.min()).astype('timedelta64[s]')
-                               }).reset_index()
+        features = pd.DataFrame({'total_duration': (df_groupby.timestamp.max() -
+                                                    df_groupby.timestamp.min()).astype('timedelta64[s]')
+                                 }).reset_index()
+
+    if level != 'process':
+        features = pd.pivot_table(features,
+                                  index=base_group_cols,
+                                  columns=level,
+                                  values=list(set(features.columns) - set(full_group_cols))).reset_index()
+
+        features.columns = [' '.join(col).strip() for col in features.columns.values]
+        features.columns = features.columns.str.replace(' ', '_')
+
+    output = features if existing_features is None else features.merge(existing_features, on=base_group_cols)
 
     return output
 
@@ -178,4 +150,3 @@ def remove_outliers(processed_train_data):
                                                 (processed_train_data.total_duration < 10000)]
 
     return processed_train_data
-
