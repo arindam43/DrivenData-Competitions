@@ -1,8 +1,9 @@
 import pandas as pd
+import numpy as np
 import re
 
 
-def create_model_datasets(df_train, df_test, start_times, labels, metadata, path, val_or_test='validation'):
+def create_model_datasets(df_train, df_test, start_times, labels, response, metadata, path, val_or_test='validation'):
 
     # Create normalization lookup tables
     print('Creating and merging normalization lookup tables...')
@@ -39,14 +40,14 @@ def create_model_datasets(df_train, df_test, start_times, labels, metadata, path
     processed_train_data = processed_train_data[list(keep_cols[keep_cols].index)]
     processed_val_data = processed_val_data[list(keep_cols[keep_cols].index)]
 
-    # Remove outliers from training data
-    processed_train_data = remove_outliers(processed_train_data)
-
     # Bring in labels and metadata for train and validation data
     processed_train_data = processed_train_data.merge(labels, on='process_id').merge(metadata, on='process_id')
     processed_val_data = processed_val_data.merge(metadata, on='process_id')
     if val_or_test == 'validation':
         processed_val_data = processed_val_data.merge(labels, on='process_id')
+
+    # Remove outliers from training data
+    processed_train_data = remove_outliers(processed_train_data, response)
 
     # Write datasets out to local
     if val_or_test == 'validation':
@@ -70,7 +71,6 @@ def create_model_datasets(df_train, df_test, start_times, labels, metadata, path
 def engineer_features(df, timestamps):
 
     # Normalize flows using historical averages
-    df['norm_supply_flow'] = df.supply_flow / df.median_supply_flow
     df['norm_return_flow'] = df.return_flow / df.median_return_flow
     df['norm_turb'] = df.norm_return_flow * df.return_turbidity
 
@@ -102,7 +102,7 @@ def calculate_features(df, base_group_cols, level='process', existing_features=N
                                  'return_residue': df_groupby.return_residue.sum(),
                                  'return_cond': df_groupby.norm_conductivity.min(),
                                  'return_duration': (df_groupby.timestamp.max() -
-                                                     df_groupby.timestamp.min()).astype('timedelta64[s]'),
+                                                     df_groupby.timestamp.min()).astype('timedelta64[s]')
                                  }).reset_index()
     elif level == 'supply_phase':
         features = pd.DataFrame({'supply_flow': df_groupby.supply_flow.sum(),
@@ -144,9 +144,22 @@ def calculate_features(df, base_group_cols, level='process', existing_features=N
     return output
 
 
-def remove_outliers(processed_train_data):
-    # Remove processed with too short or long of train duration
-    processed_train_data = processed_train_data[(processed_train_data.total_duration > 30) &
-                                                (processed_train_data.total_duration < 10000)]
+def remove_outliers(processed_train_data, response):
+    # Remove processed train data with unusually short or long train duration
+    output = processed_train_data[(processed_train_data.total_duration > 30) &
+                                  (processed_train_data.total_duration < 10000)]
 
-    return processed_train_data
+    print('Number of outliers removed: ' + str(processed_train_data.shape[0] - output.shape[0]))
+
+    # Clipping experiments
+    quantiles = (output.groupby('object_id')[response].quantile(0.2) / 10).reset_index()
+    quantiles.columns = ['object_id', 'response_thresh']
+    output = output.merge(quantiles, on='object_id')
+
+    print('Number of outliers clipped: ' + str(output[output.response_thresh > output[response]].shape[0]))
+    # output = output[output.response_thresh < output[response]]
+    output[response] = np.where(output.response_thresh > output[response],
+                                output.response_thresh - (output.response_thresh - output[response])/5,
+                                output[response])
+
+    return output

@@ -12,25 +12,30 @@ def subset_df_cols(regex, df):
 def select_model_columns(processed_train_data, cols_subset=None):
     # For each of the four models, identify which columns should be kept from overall set
     # Simulates data censoring in test data
-    non_phase_cols_short = ['object_id', 'recipe_type']
-    non_phase_cols_full = ['object_id']
 
-    pre_rinse_cols = subset_df_cols(r'(?=.*residue|.*cond|.*temp|.*none|.*row_count)', processed_train_data)
-    caustic_cols = subset_df_cols(r'(?=.*residue|.*cond|.*temp|.*none|.*row_count)', processed_train_data)
-    int_rinse_cols = subset_df_cols(r'(?=.*flow|.*residue|.*none|.*row_count)', processed_train_data)
-    acid_cols = subset_df_cols(r'(?=.*flow|.*turb|.*supply|.*none|.*row_count)', processed_train_data)
+    pre_rinse_cols = subset_df_cols(r'(?=.*caustic|.*int_rinse|.*acid|.*other|.*residue|.*cond|.*temp)', processed_train_data)
+    caustic_cols = subset_df_cols(r'(?=.*int_rinse|.*acid|.*other|.*residue|.*cond|.*temp)', processed_train_data)
+    int_rinse_cols = subset_df_cols(r'(?=.*acid|.*other|.*flow|.*residue|recipe.*)', processed_train_data)
+    acid_cols = subset_df_cols(r'(?=.*flow|.*turb|.*supply|recipe.*)', processed_train_data)
 
-    exclude_cols = set() if cols_subset is None else subset_df_cols(r'(?=.*' + cols_subset + ')', processed_train_data)
+    base_cols = list(subset_df_cols(r'(?=.*row_count|total.*|.*none|'
+                                    r'.*acid_caustic|.*acid_int_rinse|.*acid_pre_rinse|'
+                                    r'.*caustic_pre_rinse|.*caustic_int_rinse|.*caustic_acid|'
+                                    r'.*pre_rinse_caustic|.*pre_rinse_int_rinse|.*pre_rinse_acid|'
+                                    r'.*int_rinse_caustic|.*int_rinse_pre_rinse|.*int_rinse_acid)',
+                                    processed_train_data))
+    misc_cols = ['response_thresh', 'day_number', 'start_time', 'process_id', 'pipeline']
+
+    exclude_cols = set(misc_cols + base_cols) \
+        if cols_subset is None \
+        else set(list(subset_df_cols(r'(?=.*' + cols_subset + ')', processed_train_data)) + misc_cols + base_cols)
+    all_cols = set(processed_train_data.columns)
 
     cols_to_include = {
-        'pre_rinse': list(subset_df_cols(r'(?=.*pre_rinse)', processed_train_data)
-                          - exclude_cols - pre_rinse_cols) + non_phase_cols_short,
-        'caustic':   list(subset_df_cols(r'(?=.*pre_rinse|.*caustic)', processed_train_data)
-                          - exclude_cols - caustic_cols) + non_phase_cols_short,
-        'int_rinse': list(subset_df_cols(r'(?=.*pre_rinse|.*caustic|.*int_rinse)', processed_train_data)
-                          - exclude_cols - int_rinse_cols) + non_phase_cols_full,
-        'acid':      list(subset_df_cols(r'(?=.*pre_rinse|.*caustic|.*int_rinse|.*acid|.*other)', processed_train_data)
-                          - exclude_cols - acid_cols) + non_phase_cols_full
+        'pre_rinse': list(all_cols - exclude_cols - pre_rinse_cols),
+        'caustic':   list(all_cols - exclude_cols - caustic_cols),
+        'int_rinse': list(all_cols - exclude_cols - int_rinse_cols),
+        'acid':      list(all_cols - exclude_cols - acid_cols)
     }
 
     return cols_to_include
@@ -111,7 +116,7 @@ def build_models(model_type, processed_train_data, processed_val_data, params, r
                           num_boost_round=5000,
                           valid_sets=modeling_data['eval'],
                           verbose_eval=False,
-                          early_stopping_rounds=40
+                          early_stopping_rounds=50
                           )
 
     modeling_data = build_lgbm_validation_datasets(processed_train_data, processed_val_data, model_type, response,

@@ -25,12 +25,12 @@ def ingest_data(path):
     return raw_data, labels, metadata, test_data, start_times
 
 
-def preprocess_data(df, start_times, return_phase_defs=None, supply_phase_defs=None):
+def preprocess_data(df, test_data, start_times, return_phase_defs=None, supply_phase_defs=None):
     # Pre-processing - convert "intermediate rinse" to 'int_rinse'
     df.phase[df.phase == 'intermediate_rinse'] = 'int_rinse'
 
-    # # Optional pre-processing - remove processes with objects that aren't in test set
-    # df = df[df.object_id.isin(test_data.object_id)]
+    # Optional pre-processing - remove processes with objects that aren't in test set
+    df = df[df.object_id.isin(test_data.object_id)]
 
     print('Calculating process-timestamp-level features...')
     df.timestamp = df.timestamp.astype('datetime64[s]')

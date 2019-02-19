@@ -1,7 +1,7 @@
 from importlib import reload
 import pandas as pd
 import numpy as np
-import os, sys, itertools, time, datetime
+import os, sys, itertools, time, datetime, csv
 
 try:
     for module in ['FeatureEngineering', 'Modeling', 'Predict', 'Ingest']:
@@ -21,23 +21,23 @@ if 'raw_data' not in locals():
     raw_data, labels, metadata, test_data, start_times = ingest_data(path)
 
     # Pre-process data
-    raw_data, return_phases, supply_phases = preprocess_data(raw_data, start_times)
-    test_data = preprocess_data(test_data, start_times, return_phases, supply_phases)
+    raw_data, return_phases, supply_phases = preprocess_data(raw_data, test_data, start_times)
+    test_data = preprocess_data(test_data, test_data, start_times, return_phases, supply_phases)
 
     # Pre-process metadata by converting the one-hot encoded recipe types to a single column
     # Only 3 recipe types in total: pre_rinse + caustic, all phases, and acid only
     metadata['recipe_type'] = np.where(metadata.caustic == 0, 'acid_only',
                                        np.where(metadata.intermediate_rinse == 1, 'full_clean', 'short_clean'))
     metadata = metadata[['process_id', 'recipe_type']]
+
+    # EDA
+    train_eda = raw_data.describe(
+        percentiles=[0.01, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.99])
+
+    test_eda = test_data.describe(percentiles=[0.01, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.99])
+
 else:
     print('Raw data already found, skipping data read and initial pre-processing.')
-
-#
-# if 'train_eda' not in locals():
-#     train_eda = raw_data.groupby('object_id').describe(percentiles=[0.01, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.99])
-#
-# if 'test_eda' not in locals():
-#     test_eda = test_data.describe(percentiles=[0.01, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.99])
 
 # Create walk forward train/validation splits
 validation_results = pd.DataFrame(columns=['Model_Type', 'Train_Ratio', 'Excluded_Cols',
@@ -45,7 +45,7 @@ validation_results = pd.DataFrame(columns=['Model_Type', 'Train_Ratio', 'Exclude
                                            'Best_MAPE', 'Best_Num_Iters'])
 response = 'final_rinse_total_turbidity_liter'
 column_selection_mode = 'none'
-modeling_approach = 'parameter_tuning'
+modeling_approach = 'single_model'
 train_val_ratios = list(range(44, 57, 4))  # training set sizes of 40, 44, 48, and 52 days
 max_train_ratio = max(train_val_ratios)
 start_time = time.time()
@@ -66,8 +66,8 @@ for train_ratio in train_val_ratios:
     # Process the raw data to create model-ready datasets
     # Features engineering, aggregation to process_id level, outlier removal
     processed_train_data, \
-        processed_val_data = create_model_datasets(raw_train_data, raw_val_data, start_times, labels, metadata,
-                                                   path, val_or_test='validation')
+        processed_val_data = create_model_datasets(raw_train_data, raw_val_data, start_times, labels, response,
+                                                   metadata, path, val_or_test='validation')
 
     if column_selection_mode == 'grid':
         # flow_turb = ['flow|.*turb', 'flow|.*residue', 'turb', 'residue']
@@ -91,7 +91,7 @@ for train_ratio in train_val_ratios:
 
         # Hyperparameter tuning - simple grid search
         if modeling_approach == 'parameter_tuning':
-            leaves_tuning = [63, 80]
+            leaves_tuning = [63]
             min_data_tuning = [20, 30, 40, 50]
             min_gain_tuning = [0, 2.5e-12, 5e-12, 7.5e-12]
 
@@ -162,10 +162,10 @@ validation_summary.Best_Num_Iters = validation_summary.Best_Num_Iters.astype(int
 validation_best = validation_summary.loc[validation_summary.groupby('Model_Type')['Best_MAPE'].idxmin()]
 test_iterations = calculate_validation_metrics(validation_best)
 
-#
-# # Train on full data and make predictions
-# print('')
-# print('Training full model and making test set predictions...')
-# predict_test_values(raw_data, test_data, start_times, metadata, path,
-#                     params, response, test_iterations, labels, cols_to_include)
-#
+
+# Train on full data and make predictions
+print('')
+print('Training full model and making test set predictions...')
+predict_test_values(raw_data, test_data, start_times, metadata, path,
+                    params, response, test_iterations, labels, cols_to_include)
+

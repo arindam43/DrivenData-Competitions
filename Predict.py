@@ -22,7 +22,7 @@ def predict_test_values(raw_data, test_data, start_times, metadata, path,
 
     # Create model-ready datasets from the full training data and test data
     processed_full_train_data, \
-        processed_test_data = create_model_datasets(raw_data, test_data, start_times, labels, metadata,
+        processed_test_data = create_model_datasets(raw_data, test_data, start_times, labels, response, metadata,
                                                     path, val_or_test='test')
 
     # Build the four test models and make the predictions on the set
@@ -31,7 +31,7 @@ def predict_test_values(raw_data, test_data, start_times, metadata, path,
                                              response, params[model_type], test_iterations,
                                              cols_to_include[model_type], test_predictions)
 
-    # Combine predictions from four models into one dataframegit s
+    # Combine predictions from four models into one dataframe
     test_predictions = pd.concat(test_predictions).sort_values(by='process_id')
 
     # Handle negative values by setting them equal to the lowest predicted value
