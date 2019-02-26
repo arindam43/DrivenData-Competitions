@@ -13,17 +13,12 @@ def select_model_columns(processed_train_data, cols_subset=None):
     # For each of the four models, identify which columns should be kept from overall set
     # Simulates data censoring in test data
 
-    pre_rinse_cols = subset_df_cols(r'(?=.*caustic|.*int_rinse|.*acid|.*other|.*residue|.*cond|.*temp)', processed_train_data)
-    caustic_cols = subset_df_cols(r'(?=.*int_rinse|.*acid|.*other|.*residue|.*cond|.*temp)', processed_train_data)
-    int_rinse_cols = subset_df_cols(r'(?=.*acid|.*other|.*flow|.*residue|recipe.*)', processed_train_data)
-    acid_cols = subset_df_cols(r'(?=.*flow|.*turb|.*supply|recipe.*)', processed_train_data)
+    pre_rinse_cols = subset_df_cols(r'(?=.*caustic|.*int_rinse|.*acid|.*other|.*cond|.*temp|.*residue_pre_rinse)', processed_train_data)
+    caustic_cols = subset_df_cols(r'(?=.*int_rinse|.*acid|.*other|.*cond|.*temp|.*residue_caustic|.*residue_pre_rinse|.*turb_pre_rinse)', processed_train_data)
+    int_rinse_cols = subset_df_cols(r'(?=.*acid|.*other|.*flow|recipe.*|.*residue_caustic|.*residue_pre_rinse|.*turb_pre_rinse|.*residue_int_rinse)', processed_train_data)
+    acid_cols = subset_df_cols(r'(?=.*flow|.*supply|recipe.*|residue_acid|.*turb_caustic|.*residue_pre_rinse|.*turb_pre_rinse|.*residue_int_rinse|.*turb_int_rinse)', processed_train_data)
 
-    base_cols = list(subset_df_cols(r'(?=.*row_count|total.*|.*none|'
-                                    r'.*acid_caustic|.*acid_int_rinse|.*acid_pre_rinse|'
-                                    r'.*caustic_pre_rinse|.*caustic_int_rinse|.*caustic_acid|'
-                                    r'.*pre_rinse_caustic|.*pre_rinse_int_rinse|.*pre_rinse_acid|'
-                                    r'.*int_rinse_caustic|.*int_rinse_pre_rinse|.*int_rinse_acid)',
-                                    processed_train_data))
+    base_cols = list(subset_df_cols(r'(?=.*row_count|total.*|.*none)', processed_train_data))
     misc_cols = ['response_thresh', 'day_number', 'start_time', 'process_id', 'pipeline']
 
     exclude_cols = set(misc_cols + base_cols) \

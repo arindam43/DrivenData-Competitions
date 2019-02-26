@@ -2,6 +2,7 @@ from importlib import reload
 import pandas as pd
 import numpy as np
 import os, sys, itertools, time, datetime, csv
+from matplotlib import pyplot as plt
 
 try:
     for module in ['FeatureEngineering', 'Modeling', 'Predict', 'Ingest']:
@@ -29,12 +30,12 @@ if 'raw_data' not in locals():
     metadata['recipe_type'] = np.where(metadata.caustic == 0, 'acid_only',
                                        np.where(metadata.intermediate_rinse == 1, 'full_clean', 'short_clean'))
     metadata = metadata[['process_id', 'recipe_type']]
-
-    # EDA
-    train_eda = raw_data.describe(
-        percentiles=[0.01, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.99])
-
-    test_eda = test_data.describe(percentiles=[0.01, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.99])
+    #
+    # # EDA
+    # train_eda = raw_data.describe(
+    #     percentiles=[0.01, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.99])
+    #
+    # test_eda = test_data.describe(percentiles=[0.01, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.99])
 
 else:
     print('Raw data already found, skipping data read and initial pre-processing.')
@@ -70,12 +71,11 @@ for train_ratio in train_val_ratios:
                                                    metadata, path, val_or_test='validation')
 
     if column_selection_mode == 'grid':
-        # flow_turb = ['flow|.*turb', 'flow|.*residue', 'turb', 'residue']
-        # cond = ['row_count', 'cond']
-        # supp = ['row_count', 'supply']
-        # temp = ['row_count', 'temp']
-        # cols_subset = list(itertools.product(obj_low, dur))
-        cols_subset = [None]
+        grid_1 = ['residue_acid', 'turb_acid', 'residue_acid|.*turb_acid']
+        grid_2 = ['residue_caustic', 'turb_caustic', 'residue_caustic|.*turb_caustic']
+        grid_3 = ['residue_pre_rinse', 'turb_pre_rinse', 'residue_pre_rinse|.*turb_pre_rinse']
+        grid_4 = ['residue_int_rinse', 'turb_int_rinse', 'residue_int_rinse|.*turb_int_rinse']
+        cols_subset = list(itertools.product(grid_1, grid_2, grid_3, grid_4))
     else:
         cols_subset = [None]
 
@@ -142,7 +142,7 @@ for train_ratio in train_val_ratios:
                 validation_results = build_models(model_type, processed_train_data, processed_val_data,
                                                   params[model_type], response, cols_to_include[model_type],
                                                   train_ratio, max_train_ratio, tuning_params, validation_results,
-                                                  cols, False)
+                                                  cols, True)
 
         else:
             print('Invalid value for modeling approach, must be parameter_tuning or single_model.')

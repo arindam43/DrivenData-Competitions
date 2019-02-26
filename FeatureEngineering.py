@@ -1,3 +1,4 @@
+from scipy.stats import linregress
 import pandas as pd
 import numpy as np
 import re
@@ -150,16 +151,16 @@ def remove_outliers(processed_train_data, response):
                                   (processed_train_data.total_duration < 10000)]
 
     print('Number of outliers removed: ' + str(processed_train_data.shape[0] - output.shape[0]))
-
-    # Clipping experiments
-    quantiles = (output.groupby('object_id')[response].quantile(0.2) / 10).reset_index()
-    quantiles.columns = ['object_id', 'response_thresh']
-    output = output.merge(quantiles, on='object_id')
-
-    print('Number of outliers clipped: ' + str(output[output.response_thresh > output[response]].shape[0]))
-    # output = output[output.response_thresh < output[response]]
-    output[response] = np.where(output.response_thresh > output[response],
-                                output.response_thresh - (output.response_thresh - output[response])/5,
-                                output[response])
+    #
+    # # Clipping experiments
+    # quantiles = (output.groupby('object_id')[response].quantile(0.2) / 10).reset_index()
+    # quantiles.columns = ['object_id', 'response_thresh']
+    # output = output.merge(quantiles, on='object_id')
+    #
+    # print('Number of outliers clipped: ' + str(output[output.response_thresh > output[response]].shape[0]))
+    # # output = output[output.response_thresh < output[response]]
+    # output[response] = np.where(output.response_thresh > output[response],
+    #                             output.response_thresh,
+    #                             output[response])
 
     return output
