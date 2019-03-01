@@ -71,7 +71,7 @@ def create_model_datasets(df_train, df_test, start_times, labels, response, meta
 
 def engineer_features(df, timestamps):
 
-    # Normalize flows using historical averages
+    # Normalize flows
     df['norm_return_flow'] = df.return_flow / df.median_return_flow
     df['norm_turb'] = df.norm_return_flow * df.return_turbidity
 
@@ -85,6 +85,8 @@ def engineer_features(df, timestamps):
     df_supply_phase = calculate_features(df, group_cols, 'supply_phase', df_return_phase)
     df_full_phase = calculate_features(df, group_cols, 'phase', df_supply_phase)
     df_final_output = calculate_features(df, group_cols, 'process', df_full_phase)
+
+    #
 
     # Bring in start times for processed data
     df_final_output = df_final_output.merge(timestamps, on='process_id')
@@ -124,7 +126,7 @@ def calculate_features(df, base_group_cols, level='process', existing_features=N
                                      'timedelta64[s]'),
                                  'obj_low_lev': df_groupby.object_low_level.sum() / (df_groupby.timestamp.max() -
                                                                                      df_groupby.timestamp.min()).astype(
-                                     'timedelta64[s]')
+                                     'timedelta64[s]'),
                                  }).reset_index()
     else:
         features = pd.DataFrame({'total_duration': (df_groupby.timestamp.max() -
@@ -150,17 +152,19 @@ def remove_outliers(processed_train_data, response):
     output = processed_train_data[(processed_train_data.total_duration > 30) &
                                   (processed_train_data.total_duration < 10000)]
 
-    print('Number of outliers removed: ' + str(processed_train_data.shape[0] - output.shape[0]))
-    #
-    # # Clipping experiments
-    # quantiles = (output.groupby('object_id')[response].quantile(0.2) / 10).reset_index()
-    # quantiles.columns = ['object_id', 'response_thresh']
-    # output = output.merge(quantiles, on='object_id')
-    #
-    # print('Number of outliers clipped: ' + str(output[output.response_thresh > output[response]].shape[0]))
-    # # output = output[output.response_thresh < output[response]]
-    # output[response] = np.where(output.response_thresh > output[response],
-    #                             output.response_thresh,
-    #                             output[response])
+    duration_dim = output.shape[0]
+    print('Number of duration outliers removed: ' + str(processed_train_data.shape[0] - duration_dim))
+
+    # Remove response outliers with unusually low responses
+    quantiles = (output.groupby('object_id')[response].quantile(0.5) / 25).reset_index()
+    quantiles.columns = ['object_id', 'response_thresh']
+    output = output.merge(quantiles, on='object_id')
+
+    output = output[output.response_thresh < output[response]]
+    print('Number of response outliers removed: ' + str(duration_dim - output.shape[0]))
 
     return output
+
+
+def subset_df_cols(regex, df):
+    return set(filter(lambda x: re.search(regex, x), list(df.columns)))

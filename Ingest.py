@@ -69,10 +69,11 @@ def preprocess_data(df, test_data, start_times, return_phase_defs=None, supply_p
 
     df['phase_elapse_end'] = (
             df.groupby(['process_id', 'phase']).timestamp.transform('max') - df.timestamp).dt.seconds
+    df['phase_elapse_start'] = (
+            df.timestamp - df.groupby(['process_id', 'return_phase']).timestamp.transform('min')).dt.seconds
 
     df['end_turb'] = df.return_turbidity * (df.phase_elapse_end <= 40)
     df['end_residue'] = df.return_residue * (df.phase_elapse_end <= 40)
-
 
     print('Successfully calculated process-timestamp-level features.')
     print('')

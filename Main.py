@@ -1,7 +1,7 @@
 from importlib import reload
 import pandas as pd
 import numpy as np
-import os, sys, itertools, time, datetime, csv
+import os, sys, itertools, time, datetime, csv, logging
 from matplotlib import pyplot as plt
 
 try:
@@ -32,9 +32,7 @@ if 'raw_data' not in locals():
     metadata = metadata[['process_id', 'recipe_type']]
     #
     # # EDA
-    # train_eda = raw_data.describe(
-    #     percentiles=[0.01, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.99])
-    #
+    # train_eda = raw_data.describe(percentiles=[0.01, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.99])
     # test_eda = test_data.describe(percentiles=[0.01, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.99])
 
 else:
@@ -87,13 +85,13 @@ for train_ratio in train_val_ratios:
         # Create dictionary of columns to be included in each of the four models
         cols_to_include = select_model_columns(processed_train_data, cols)
 
-        learning_rate = 0.01
+        learning_rate = 0.005
 
         # Hyperparameter tuning - simple grid search
         if modeling_approach == 'parameter_tuning':
             leaves_tuning = [63]
-            min_data_tuning = [20, 30, 40, 50]
-            min_gain_tuning = [0, 2.5e-12, 5e-12, 7.5e-12]
+            min_data_tuning = list(range(20, 81, 3))
+            min_gain_tuning = list(np.linspace(0, 1e-11, 21))
 
             tuning_grid = list(itertools.product(leaves_tuning, min_data_tuning, min_gain_tuning))
             counter = 1
@@ -133,7 +131,7 @@ for train_ratio in train_val_ratios:
                                     'min_split_gain': 2.5e-12},
                       'int_rinse': {'boosting_type': 'gbdt', 'objective': 'mape', 'num_leaves': 63,
                                     'learning_rate': learning_rate, 'verbose': -1, 'min_data': 40,
-                                    'min_split_gain': 5e-12},
+                                    'min_split_gain': 2.5e-12},
                       'acid':      {'boosting_type': 'gbdt', 'objective': 'mape', 'num_leaves': 63,
                                     'learning_rate': learning_rate, 'verbose': -1, 'min_data': 40,
                                     'min_split_gain': 5e-12}}
@@ -142,7 +140,7 @@ for train_ratio in train_val_ratios:
                 validation_results = build_models(model_type, processed_train_data, processed_val_data,
                                                   params[model_type], response, cols_to_include[model_type],
                                                   train_ratio, max_train_ratio, tuning_params, validation_results,
-                                                  cols, True)
+                                                  cols, False)
 
         else:
             print('Invalid value for modeling approach, must be parameter_tuning or single_model.')
@@ -160,6 +158,7 @@ validation_summary.Best_Num_Iters = validation_summary.Best_Num_Iters.astype(int
 
 # Determine best hyperparameters for final model tuning
 validation_best = validation_summary.loc[validation_summary.groupby('Model_Type')['Best_MAPE'].idxmin()]
+#validation_best.to_csv('Best Validation Results.csv')
 test_iterations = calculate_validation_metrics(validation_best)
 
 

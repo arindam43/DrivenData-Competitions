@@ -13,10 +13,10 @@ def select_model_columns(processed_train_data, cols_subset=None):
     # For each of the four models, identify which columns should be kept from overall set
     # Simulates data censoring in test data
 
-    pre_rinse_cols = subset_df_cols(r'(?=.*caustic|.*int_rinse|.*acid|.*other|.*cond|.*temp|.*residue_pre_rinse)', processed_train_data)
-    caustic_cols = subset_df_cols(r'(?=.*int_rinse|.*acid|.*other|.*cond|.*temp|.*residue_caustic|.*residue_pre_rinse|.*turb_pre_rinse)', processed_train_data)
-    int_rinse_cols = subset_df_cols(r'(?=.*acid|.*other|.*flow|recipe.*|.*residue_caustic|.*residue_pre_rinse|.*turb_pre_rinse|.*residue_int_rinse)', processed_train_data)
-    acid_cols = subset_df_cols(r'(?=.*flow|.*supply|recipe.*|residue_acid|.*turb_caustic|.*residue_pre_rinse|.*turb_pre_rinse|.*residue_int_rinse|.*turb_int_rinse)', processed_train_data)
+    pre_rinse_cols = subset_df_cols(r'(?=.*caustic|.*int_rinse|.*acid|.*other|.*residue|.*cond|.*temp)', processed_train_data)
+    caustic_cols = subset_df_cols(r'(?=.*int_rinse|.*acid|.*other|.*residue|.*cond|.*temp)', processed_train_data)
+    int_rinse_cols = subset_df_cols(r'(?=.*acid|.*other|.*flow|.*residue|recipe.*)', processed_train_data)
+    acid_cols = subset_df_cols(r'(?=.*flow|.*turb|.*supply|recipe.*)', processed_train_data)
 
     base_cols = list(subset_df_cols(r'(?=.*row_count|total.*|.*none)', processed_train_data))
     misc_cols = ['response_thresh', 'day_number', 'start_time', 'process_id', 'pipeline']
@@ -111,28 +111,28 @@ def build_models(model_type, processed_train_data, processed_val_data, params, r
                           num_boost_round=5000,
                           valid_sets=modeling_data['eval'],
                           verbose_eval=False,
-                          early_stopping_rounds=50
+                          early_stopping_rounds=150
                           )
 
     modeling_data = build_lgbm_validation_datasets(processed_train_data, processed_val_data, model_type, response,
                                                    cols_to_include=cols_to_include)
-
-    if train_ratio == max_train_ratio and visualize is True:
-        # explain the model's predictions using SHAP values
-        # (same syntax works for LightGBM, CatBoost, and scikit-learn models)
-        # matplotlib.pyplot.close()
-        matplotlib.pyplot.figure()
-        explainer = shap.TreeExplainer(gbm_train)
-        shap_values = explainer.shap_values(modeling_data['eval'].data)
-
-        # visualize the first prediction's explanation
-        # shap.force_plot(explainer.expected_value, shap_values[0, :], modeling_data['eval_acid'].data.iloc[0, :],
-        #   matplotlib=True)
-        # shap.dependence_plot('total_turbidity_acid', shap_values, modeling_data['eval_acid'].data)
-        # shap.summary_plot(shap_values, modeling_data['eval_' + model_type].data)
-        shap_title = 'Model Type: ' + model_type
-        shap.summary_plot(shap_values, modeling_data['eval'].data, plot_type='bar', max_display=500,
-                          title=shap_title)
+    #
+    # if train_ratio == max_train_ratio and visualize is True:
+    #     # explain the model's predictions using SHAP values
+    #     # (same syntax works for LightGBM, CatBoost, and scikit-learn models)
+    #     # matplotlib.pyplot.close()
+    #     matplotlib.pyplot.figure()
+    #     explainer = shap.TreeExplainer(gbm_train)
+    #     shap_values = explainer.shap_values(modeling_data['eval'].data)
+    #
+    #     # visualize the first prediction's explanation
+    #     # shap.force_plot(explainer.expected_value, shap_values[0, :], modeling_data['eval_acid'].data.iloc[0, :],
+    #     #   matplotlib=True)
+    #     # shap.dependence_plot('total_turbidity_acid', shap_values, modeling_data['eval_acid'].data)
+    #     # shap.summary_plot(shap_values, modeling_data['eval_' + model_type].data)
+    #     shap_title = 'Model Type: ' + model_type
+    #     shap.summary_plot(shap_values, modeling_data['eval'].data, plot_type='bar', max_display=500,
+    #                       title=shap_title)
 
     if cols is None:
         cols = 'NA'
