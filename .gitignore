@@ -1,8 +1,9 @@
 *.csv
 *.twb
-__pycache__/
-EDA/
-Predictions/
+Rinse Over Run/__pycache__/
+Rinse Over Run/EDA/
+Rinse Over Run/Predictions/
 .idea/
 *.pkl
-Report/
+Rinse Over Run/Report/
+*.gitignore
