@@ -39,13 +39,16 @@ else:
     print('Raw data already found, skipping data read and initial pre-processing.')
 
 # Create walk forward train/validation splits
+response = 'final_rinse_total_turbidity_liter'
 validation_results = pd.DataFrame(columns=['Model_Type', 'Train_Ratio', 'Excluded_Cols',
                                            'Num_Leaves', 'Min_Data_In_Leaf', 'Min_Gain',
                                            'Best_MAPE', 'Best_Num_Iters'])
-response = 'final_rinse_total_turbidity_liter'
+validation_predictions = pd.DataFrame(columns=['process_id', response, 'train_ratio', 'model_type',
+                                               'predicted_response'])
 column_selection_mode = 'none'
 modeling_approach = 'single_model'
-train_val_ratios = list(range(44, 57, 4))  # training set sizes of 40, 44, 48, and 52 days
+# train_val_ratios = list(range(44, 57, 4))  # training set sizes of 40, 44, 48, and 52 days
+train_val_ratios = [56]
 max_train_ratio = max(train_val_ratios)
 start_time = time.time()
 
@@ -85,7 +88,7 @@ for train_ratio in train_val_ratios:
         # Create dictionary of columns to be included in each of the four models
         cols_to_include = select_model_columns(processed_train_data, cols)
 
-        learning_rate = 0.005
+        learning_rate = 0.01
 
         # Hyperparameter tuning - simple grid search
         if modeling_approach == 'parameter_tuning':
@@ -137,10 +140,11 @@ for train_ratio in train_val_ratios:
                                     'min_split_gain': 5e-12}}
 
             for model_type in cols_to_include.keys():
-                validation_results = build_models(model_type, processed_train_data, processed_val_data,
+                validation_predictions, \
+                validation_results, temp = build_models(model_type, processed_train_data, processed_val_data,
                                                   params[model_type], response, cols_to_include[model_type],
                                                   train_ratio, max_train_ratio, tuning_params, validation_results,
-                                                  cols, False)
+                                                  cols, True, validation_predictions)
 
         else:
             print('Invalid value for modeling approach, must be parameter_tuning or single_model.')
@@ -161,10 +165,10 @@ validation_best = validation_summary.loc[validation_summary.groupby('Model_Type'
 #validation_best.to_csv('Best Validation Results.csv')
 test_iterations = calculate_validation_metrics(validation_best)
 
-
-# Train on full data and make predictions
-print('')
-print('Training full model and making test set predictions...')
-predict_test_values(raw_data, test_data, start_times, metadata, path,
-                    params, response, test_iterations, labels, cols_to_include)
-
+#
+# # Train on full data and make predictions
+# print('')
+# print('Training full model and making test set predictions...')
+# predict_test_values(raw_data, test_data, start_times, metadata, path,
+#                     params, response, test_iterations, labels, cols_to_include)
+#

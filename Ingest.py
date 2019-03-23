@@ -38,9 +38,9 @@ def preprocess_data(df, test_data, start_times, return_phase_defs=None, supply_p
 
     # Return phase definition
     df['return_phase'] = df.phase + '_' + np.where(df.return_drain == True, 'drain',
-                                          np.where(df.return_caustic == True, 'caus',
+                                          np.where(df.return_caustic == True, 'cs',
                                           np.where(df.return_acid == True, 'ac',
-                                          np.where(df.return_recovery_water == True, 'rec_water', 'none'))))
+                                          np.where(df.return_recovery_water == True, 'rw', 'none'))))
 
     if return_phase_defs is None:
         return_phases = list(df.return_phase.value_counts()[df.return_phase.value_counts() > 300000].reset_index()['index'])
@@ -49,10 +49,10 @@ def preprocess_data(df, test_data, start_times, return_phase_defs=None, supply_p
     df['return_phase'] = np.where(df.return_phase.isin(return_phases), df.return_phase, 'other')
 
     # Supply phase definition
-    df['supply_phase'] = df.phase + '_' + np.where(df.supply_pre_rinse == True, 'pre_rin',
-                                          np.where(df.supply_caustic == True, 'caus',
+    df['supply_phase'] = df.phase + '_' + np.where(df.supply_pre_rinse == True, 'pr',
+                                          np.where(df.supply_caustic == True, 'cs',
                                           np.where(df.supply_acid == True, 'ac',
-                                          np.where(df.supply_clean_water == True, 'clean_water', 'none'))))
+                                          np.where(df.supply_clean_water == True, 'cw', 'none'))))
 
     if supply_phase_defs is None:
         supply_phases = list(

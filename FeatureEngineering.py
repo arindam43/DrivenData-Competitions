@@ -1,4 +1,3 @@
-from scipy.stats import linregress
 import pandas as pd
 import numpy as np
 import re
@@ -101,16 +100,16 @@ def calculate_features(df, base_group_cols, level='process', existing_features=N
     df_groupby = df.groupby(full_group_cols)
 
     if level == 'return_phase':
-        features = pd.DataFrame({'return_turb': df_groupby.norm_turb.sum(),
-                                 'return_residue': df_groupby.return_residue.sum(),
-                                 'return_cond': df_groupby.norm_conductivity.min(),
-                                 'return_duration': (df_groupby.timestamp.max() -
+        features = pd.DataFrame({'ret_turb': df_groupby.norm_turb.sum(),
+                                 'ret_residue': df_groupby.return_residue.sum(),
+                                 'ret_cond': df_groupby.norm_conductivity.min(),
+                                 'ret_dur': (df_groupby.timestamp.max() -
                                                      df_groupby.timestamp.min()).astype('timedelta64[s]')
                                  }).reset_index()
     elif level == 'supply_phase':
-        features = pd.DataFrame({'supply_flow': df_groupby.supply_flow.sum(),
-                                 'supply_pressure': df_groupby.norm_supply_pressure.min(),
-                                 'supply_duration': (df_groupby.timestamp.max() -
+        features = pd.DataFrame({'sup_flow': df_groupby.supply_flow.sum(),
+                                 'sup_press': df_groupby.norm_supply_pressure.min(),
+                                 'sup_dur': (df_groupby.timestamp.max() -
                                                      df_groupby.timestamp.min()).astype('timedelta64[s]'),
                                  }).reset_index()
     elif level == 'phase':

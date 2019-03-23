@@ -14,9 +14,9 @@ def select_model_columns(processed_train_data, cols_subset=None):
     # Simulates data censoring in test data
 
     pre_rinse_cols = subset_df_cols(r'(?=.*caustic|.*int_rinse|.*acid|.*other|.*residue|.*cond|.*temp)', processed_train_data)
-    caustic_cols = subset_df_cols(r'(?=.*int_rinse|.*acid|.*other|.*residue|.*cond|.*temp)', processed_train_data)
-    int_rinse_cols = subset_df_cols(r'(?=.*acid|.*other|.*flow|.*residue|recipe.*)', processed_train_data)
-    acid_cols = subset_df_cols(r'(?=.*flow|.*turb|.*supply|recipe.*)', processed_train_data)
+    caustic_cols = subset_df_cols(r'(?=.*turb_pre_rinse|.*int_rinse|.*acid|.*other|.*residue|.*cond|.*temp)', processed_train_data)
+    int_rinse_cols = subset_df_cols(r'(?=.*turb_pre_rinse|.*acid|.*other|.*flow|.*residue|recipe.*)', processed_train_data)
+    acid_cols = subset_df_cols(r'(?=turb_acid|.*turb_caustic|.*residue_pre_rinse|.*turb_pre_rinse|.*residue_int_rinse|.*turb_int_rinse|.*flow|.*sup|recipe.*)', processed_train_data)
 
     base_cols = list(subset_df_cols(r'(?=.*row_count|total.*|.*none)', processed_train_data))
     misc_cols = ['response_thresh', 'day_number', 'start_time', 'process_id', 'pipeline']
@@ -96,7 +96,7 @@ def build_lgbm_test_datasets(full_train_data, test_data, response, cols_to_inclu
 
 
 def build_models(model_type, processed_train_data, processed_val_data, params, response, cols_to_include,
-                 train_ratio, max_train_ratio, tuning_params, validation_results, cols, visualize):
+                 train_ratio, max_train_ratio, tuning_params, validation_results, cols, visualize, predictions):
 
     # Build lightgbm datasets from train and test data
     # Must be repeated for each model to properly simulate data censoring ('cols_to_include' parameter)
@@ -111,28 +111,44 @@ def build_models(model_type, processed_train_data, processed_val_data, params, r
                           num_boost_round=5000,
                           valid_sets=modeling_data['eval'],
                           verbose_eval=False,
-                          early_stopping_rounds=150
+                          early_stopping_rounds=150,
+                          keep_training_booster=True
                           )
+
+    preds = gbm_train._Booster__inner_predict(data_idx=1)
+    output_preds = processed_val_data[processed_val_data['row_count_' + model_type].notnull()].reset_index()
+    output_preds = output_preds[['process_id', response]]
+    output_preds['train_ratio'] = train_ratio
+    output_preds['model_type'] = model_type
+    output_preds['predicted_response'] = pd.Series(preds)
+
+    predictions = predictions.append(output_preds)
 
     modeling_data = build_lgbm_validation_datasets(processed_train_data, processed_val_data, model_type, response,
                                                    cols_to_include=cols_to_include)
-    #
-    # if train_ratio == max_train_ratio and visualize is True:
-    #     # explain the model's predictions using SHAP values
-    #     # (same syntax works for LightGBM, CatBoost, and scikit-learn models)
-    #     # matplotlib.pyplot.close()
-    #     matplotlib.pyplot.figure()
-    #     explainer = shap.TreeExplainer(gbm_train)
-    #     shap_values = explainer.shap_values(modeling_data['eval'].data)
-    #
-    #     # visualize the first prediction's explanation
-    #     # shap.force_plot(explainer.expected_value, shap_values[0, :], modeling_data['eval_acid'].data.iloc[0, :],
-    #     #   matplotlib=True)
-    #     # shap.dependence_plot('total_turbidity_acid', shap_values, modeling_data['eval_acid'].data)
-    #     # shap.summary_plot(shap_values, modeling_data['eval_' + model_type].data)
-    #     shap_title = 'Model Type: ' + model_type
-    #     shap.summary_plot(shap_values, modeling_data['eval'].data, plot_type='bar', max_display=500,
-    #                       title=shap_title)
+
+    if train_ratio == max_train_ratio and visualize is True and model_type == 'acid':
+        # explain the model's predictions using SHAP values
+        # (same syntax works for LightGBM, CatBoost, and scikit-learn models)
+        # matplotlib.pyplot.close()
+        matplotlib.pyplot.figure()
+        explainer = shap.TreeExplainer(gbm_train)
+        shap_data = modeling_data['eval'].data.copy()
+        shap_values = explainer.shap_values(shap_data[shap_data.end_residue_acid < 1.5e6])
+
+        # visualize the first prediction's explanation
+        # shap.force_plot(explainer.expected_value, shap_values[0, 1], modeling_data['eval'].data.iloc[0, 1],
+        #                 matplotlib=True)
+
+        shap.dependence_plot('end_residue_acid', shap_values, shap_data[shap_data.end_residue_acid < 1.5e6])
+        # matplotlib.pyplot.figure()
+        # shap.dependence_plot('ret_return_acid_ac', shap_values, modeling_data['eval'].data, interaction_index=None)
+        # matplotlib.pyplot.figure()
+        # shap.dependence_plot('end_residue_acid', shap_values, modeling_data['eval'].data, interaction_index=None)
+        # matplotlib.pyplot.figure()
+        # shap.dependence_plot('ret_residue_caustic_drain', shap_values, modeling_data['eval'].data, interaction_index=None)
+        # matplotlib.pyplot.figure()
+        # shap.summary_plot(shap_values, shap_data, plot_type='bar', max_display=500)
 
     if cols is None:
         cols = 'NA'
@@ -147,7 +163,7 @@ def build_models(model_type, processed_train_data, processed_val_data, params, r
                                                                   gbm_train.best_iteration]],
                                                    columns=validation_results.columns))
 
-    return validation_results
+    return predictions, validation_results, modeling_data['eval'].data
 
 
 def build_test_models(model_type, processed_full_train_data, processed_test_data, response, params, test_iterations,
