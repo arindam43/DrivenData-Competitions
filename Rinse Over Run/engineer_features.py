@@ -1,12 +1,12 @@
 import pandas as pd
-import numpy as np
+import logging as logger
 import re
 
 
 def create_model_datasets(df_train, df_test, start_times, labels, response, metadata, path, val_or_test='validation'):
 
     # Create normalization lookup tables
-    print('Creating and merging normalization lookup tables...')
+    logger.info('Creating and merging normalization lookup tables...')
 
     train_lookup = df_train.groupby(['object_id', 'return_phase']).\
         agg({'return_flow': 'median', 'return_conductivity': 'median'}).reset_index()
@@ -20,13 +20,13 @@ def create_model_datasets(df_train, df_test, start_times, labels, response, meta
     df_train = df_train.merge(train_lookup, on=['object_id', 'supply_phase'], how='left').sort_values(by='timestamp')
     df_test = df_test.merge(train_lookup, on=['object_id', 'supply_phase'], how='left').sort_values(by='timestamp')
 
-    print('Normalization lookup tables finished.')
+    logger.info('Normalization lookup tables finished.')
 
     # Engineer phase-level features on train, validation, and test sets
-    print('Engineering features on train, ' + val_or_test + ' sets...')
+    logger.info('Engineering features on train, ' + val_or_test + ' sets...')
     processed_train_data = engineer_features(df_train, start_times)
     processed_val_data = engineer_features(df_test, start_times)
-    print('Successfully engineered features.')
+    logger.info('Successfully engineered features.')
 
     # Fill nas with 0, where appropriate
     for model_type in ['acid', 'int_rinse', 'pre_rinse', 'caustic']:
@@ -60,8 +60,8 @@ def create_model_datasets(df_train, df_test, start_times, labels, response, meta
     # Ensure that categories are consistent across training, validation, and test sets
     for col in ['object_id', 'recipe_type']:
         processed_train_data[col] = processed_train_data[col].astype('category')
-        processed_val_data[col] = processed_val_data[col].astype('category', categories=processed_train_data[
-            col].cat.categories)
+        processed_val_data[col] = processed_val_data[col].astype(pd.api.types.CategoricalDtype(
+            categories=processed_train_data[col].cat.categories))
 
     processed_val_data = processed_val_data.sort_values(by='process_id')
 
@@ -85,8 +85,6 @@ def engineer_features(df, timestamps):
     df_full_phase = calculate_features(df, group_cols, 'phase', df_supply_phase)
     df_final_output = calculate_features(df, group_cols, 'process', df_full_phase)
 
-    #
-
     # Bring in start times for processed data
     df_final_output = df_final_output.merge(timestamps, on='process_id')
     df_final_output = df_final_output.sort_values(by=['object_id', 'start_time'])
@@ -104,13 +102,13 @@ def calculate_features(df, base_group_cols, level='process', existing_features=N
                                  'ret_residue': df_groupby.return_residue.sum(),
                                  'ret_cond': df_groupby.norm_conductivity.min(),
                                  'ret_dur': (df_groupby.timestamp.max() -
-                                                     df_groupby.timestamp.min()).astype('timedelta64[s]')
+                                             df_groupby.timestamp.min()).astype('timedelta64[s]')
                                  }).reset_index()
     elif level == 'supply_phase':
         features = pd.DataFrame({'sup_flow': df_groupby.supply_flow.sum(),
                                  'sup_press': df_groupby.norm_supply_pressure.min(),
                                  'sup_dur': (df_groupby.timestamp.max() -
-                                                     df_groupby.timestamp.min()).astype('timedelta64[s]'),
+                                             df_groupby.timestamp.min()).astype('timedelta64[s]'),
                                  }).reset_index()
     elif level == 'phase':
         features = pd.DataFrame({'row_count': df_groupby.phase.count(),
@@ -147,12 +145,13 @@ def calculate_features(df, base_group_cols, level='process', existing_features=N
 
 
 def remove_outliers(processed_train_data, response):
+
     # Remove processed train data with unusually short or long train duration
     output = processed_train_data[(processed_train_data.total_duration > 30) &
                                   (processed_train_data.total_duration < 10000)]
 
     duration_dim = output.shape[0]
-    print('Number of duration outliers removed: ' + str(processed_train_data.shape[0] - duration_dim))
+    logger.info('Number of duration outliers removed: ' + str(processed_train_data.shape[0] - duration_dim))
 
     # Remove response outliers with unusually low responses
     quantiles = (output.groupby('object_id')[response].quantile(0.5) / 25).reset_index()
@@ -160,7 +159,7 @@ def remove_outliers(processed_train_data, response):
     output = output.merge(quantiles, on='object_id')
 
     output = output[output.response_thresh < output[response]]
-    print('Number of response outliers removed: ' + str(duration_dim - output.shape[0]))
+    logger.info('Number of response outliers removed: ' + str(duration_dim - output.shape[0]))
 
     return output
 

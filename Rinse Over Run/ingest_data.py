@@ -1,49 +1,61 @@
 import pandas as pd
 import numpy as np
+import logging as logger
+
 pd.options.mode.chained_assignment = None
 
 
 def ingest_data(path):
     # Read in data from source files
-    print('Reading in source data sets...')
+    logger.info('Raw data not found; reading in raw data from source files...')
     raw_data = pd.read_pickle(path + 'train_values.pkl')
     labels = pd.read_csv(path + 'train_labels.csv')
     metadata = pd.read_csv(path + 'recipe_metadata.csv')
     test_data = pd.read_pickle(path + 'test_values.pkl')
-    print('Successfully read in source data sets.')
-    print('')
+    logger.info('Successfully read in source data.')
 
     # Determine when each process started for both train and test data
     # Necessary to properly do walk forward validation and for feature engineering
-    print('Determining process start times...')
+    logger.info('Calculating process start times...')
     train_start_times = calculate_start_times(raw_data)
     test_start_times = calculate_start_times(test_data)
     start_times = pd.concat([train_start_times, test_start_times]).sort_values(by='start_time')
-    print('Process start times successfully determined.')
-    print('')
+    logger.info('Process start times successfully calculated.')
 
     return raw_data, labels, metadata, test_data, start_times
 
 
 def preprocess_data(df, test_data, start_times, return_phase_defs=None, supply_phase_defs=None):
-    # Pre-processing - convert "intermediate rinse" to 'int_rinse'
+    if return_phase_defs is None:
+        data_type = 'training'
+    else:
+        data_type = 'test'
+
+    logger.info('Pre-processing raw ' + data_type + ' data...')
+    # Convert 'intermediate rinse' to 'int_rinse' for succinctness
     df.phase[df.phase == 'intermediate_rinse'] = 'int_rinse'
 
-    # Optional pre-processing - remove processes with objects that aren't in test set
+    # Remove processes with objects that aren't in test set
     df = df[df.object_id.isin(test_data.object_id)]
 
-    print('Calculating process-timestamp-level features...')
     df.timestamp = df.timestamp.astype('datetime64[s]')
     df = df.merge(start_times, on='process_id')
 
+    logger.info('Calculating process-timestamp-level features...')
     # Return phase definition
-    df['return_phase'] = df.phase + '_' + np.where(df.return_drain == True, 'drain',
+    # Use shortened versions of phase names to avoid issues when simulating mid-process predictions
+    # Said simulation drops columns using regex that checks for full phase name
+    df['return_phase'] = df.phase + '_' + np.where(df.return_drain == True, 'dr',
                                           np.where(df.return_caustic == True, 'cs',
                                           np.where(df.return_acid == True, 'ac',
                                           np.where(df.return_recovery_water == True, 'rw', 'none'))))
 
+    # Bucket infrequent return phases as 'other'
+    # Definition of 'infrequent' is determined by training set frequencies, which must be pre-computed and passed
+    # as a parameter when pre-processing test set data
     if return_phase_defs is None:
-        return_phases = list(df.return_phase.value_counts()[df.return_phase.value_counts() > 300000].reset_index()['index'])
+        return_phases = list(
+            df.return_phase.value_counts()[df.return_phase.value_counts() > 300000].reset_index()['index'])
     else:
         return_phases = return_phase_defs
     df['return_phase'] = np.where(df.return_phase.isin(return_phases), df.return_phase, 'other')
@@ -54,6 +66,8 @@ def preprocess_data(df, test_data, start_times, return_phase_defs=None, supply_p
                                           np.where(df.supply_acid == True, 'ac',
                                           np.where(df.supply_clean_water == True, 'cw', 'none'))))
 
+    # Bucket infrequent supply phases as 'other'
+    # Same process as return phases
     if supply_phase_defs is None:
         supply_phases = list(
             df.supply_phase.value_counts()[df.supply_phase.value_counts() > 100000].reset_index()['index'])
@@ -64,19 +78,15 @@ def preprocess_data(df, test_data, start_times, return_phase_defs=None, supply_p
     # Other process-timestamp-level features
     df['return_flow'] = np.maximum(0, df.return_flow)
     df['supply_flow'] = np.maximum(0, df.supply_flow)
-
     df['return_residue'] = df.return_flow * df.return_turbidity
-
     df['phase_elapse_end'] = (
             df.groupby(['process_id', 'phase']).timestamp.transform('max') - df.timestamp).dt.seconds
     df['phase_elapse_start'] = (
             df.timestamp - df.groupby(['process_id', 'return_phase']).timestamp.transform('min')).dt.seconds
-
-    df['end_turb'] = df.return_turbidity * (df.phase_elapse_end <= 40)
+    df['end_turb'] = df.return_turbidity * (df.phase_elapse_end <= 40)  # Last 80 seconds, since each record = 2 seconds
     df['end_residue'] = df.return_residue * (df.phase_elapse_end <= 40)
 
-    print('Successfully calculated process-timestamp-level features.')
-    print('')
+    logger.info('Pre-processing of raw ' + data_type + ' data finished.')
 
     if return_phase_defs is None:
         return df, return_phases, supply_phases
@@ -91,4 +101,3 @@ def calculate_start_times(df):
     output.columns = ['process_id', 'start_time', 'day_number']
 
     return output
-

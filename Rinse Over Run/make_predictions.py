@@ -1,17 +1,10 @@
 import pandas as pd
-import sys
 import os
-from importlib import reload
 from datetime import datetime
+import logging as logger
 
-try:
-    for module in ['FeatureEngineering', 'Modeling']:
-        reload(sys.modules[module])
-except KeyError:
-    pass
-
-from FeatureEngineering import create_model_datasets
-from Modeling import build_test_models
+from engineer_features import create_model_datasets
+from build_models import build_test_models
 
 
 def predict_test_values(raw_data, test_data, start_times, metadata, path,
@@ -34,7 +27,7 @@ def predict_test_values(raw_data, test_data, start_times, metadata, path,
     # Combine predictions from four models into one dataframe
     test_predictions = pd.concat(test_predictions).sort_values(by='process_id')
 
-    # Handle negative values by setting them equal to the lowest predicted value
+    # Handle negative values (very rare) by setting them equal to the lowest predicted value
     test_predictions.loc[test_predictions[response] < 0, response] = \
         test_predictions.loc[test_predictions[response] > 0, response].min()
 
@@ -61,4 +54,4 @@ def write_predictions_to_csv(predictions, test_data, response):
     output_path = current_directory + '\\Predictions\\Test Predictions ' + current_time + ' (Full).csv'
     test_pred_full.to_csv(output_path, index=False)
 
-    print('Test set predictions made at ' + str(current_time) + ' saved to csv file.')
+    logger.info('Test set predictions made at ' + str(current_time) + ' saved to csv file.')
