@@ -3,7 +3,35 @@ import logging as logger
 import re
 
 
-def create_model_datasets(df_train, df_test, start_times, labels, response, metadata, path, val_or_test='validation'):
+def create_model_datasets(df_train, df_test, start_times, labels, response, metadata, path,
+                          val_or_test='validation', save_to_local=False):
+    """Transforms pre-processed train and test data into model-ready dataframes.
+
+    Performs following steps:
+    1. Creates and merges normalization tables used for feature engineering.
+    2. Engineers features at a process level or more granular (i.e. return-phase, supply-phase, etc.)
+    3. Joins labels and metadata to engineered features
+    4. Removes outliers
+    5. Converts appropriate features to categorical
+
+    Args:
+        df_train (dataframe): training dataset.
+        df_test (dataframe): test dataset.
+        start_times (dataframe): start times for each process.
+        labels (dataframe): labels for training dataset.
+        response (str): name of response column.
+        metadata (dataframe): recipe metadata dataset.
+        path (str): path to directory containing source files.
+        val_or_test (str): flag to indicate whether or not the test data being passed is a validation set or a true
+            test set. Valid values are 'validation' and 'test'.
+        save_to_local (bool): flag to indicate whether or not to save the model-ready dataset to local directory
+            specified by 'path' arg.
+
+    Returns:
+        processed_train_data (dataframe): fully processed train dataset for modeling.
+        processed_val_data (dataframe): fully processed validation or test data set for making predictions and
+            evaluating model performance (for validation sets only).
+    """
 
     # Create normalization lookup tables
     logger.info('Creating and merging normalization lookup tables...')
@@ -49,12 +77,22 @@ def create_model_datasets(df_train, df_test, start_times, labels, response, meta
     # Remove outliers from training data
     processed_train_data = remove_outliers(processed_train_data, response)
 
-    # Write datasets out to local
-    if val_or_test == 'validation':
-        processed_train_data.to_csv(path + 'modeling_data.csv')
-    elif val_or_test == 'test':
-        processed_train_data.to_csv(path + 'full_modeling_data.csv')
-        processed_val_data.to_csv(path + 'processed_test_data.csv')
+    # Write datasets out to local, if desired
+    if val_or_test == 'validation' and save_to_local:
+        processed_train_data.to_csv(path + 'modeling_data_train.csv')
+        logger.info('Training modeling data successfully saved to csv file.')
+        processed_val_data.to_csv(path + 'modeling_data_validation.csv')
+        logger.info('Validation modeling data successfully saved to csv file.')
+    elif val_or_test == 'test' and save_to_local:
+        processed_train_data.to_csv(path + 'modeling_data_full.csv')
+        logger.info('Full training modeling data successfully saved to csv file.')
+        processed_val_data.to_csv(path + 'modeling_data_test.csv')
+        logger.info('Test modeling data successfully saved to csv file.')
+    elif not save_to_local:
+        pass
+    else:
+        logger.error('Invalid value for val_or_test or save_to_local args; val_or_test must be ' +
+                     '\'validation\' or \'test\' and save_to_local must be boolean (True or False).')
 
     # Convert object id to category
     # Ensure that categories are consistent across training, validation, and test sets
@@ -69,6 +107,15 @@ def create_model_datasets(df_train, df_test, start_times, labels, response, meta
 
 
 def engineer_features(df, timestamps):
+    """Engineers features from raw data at various levels of aggregation and transforms them to process-level.
+
+    Args:
+        df (dataframe): preprocessed process-timestamp-level data.
+        timestamps (dataframe): start times for each process.
+
+    Returns:
+        df_final_output (dataframe): full set of engineered process-level features for use in modeling.
+    """
 
     # Normalize flows
     df['norm_return_flow'] = df.return_flow / df.median_return_flow
@@ -93,7 +140,30 @@ def engineer_features(df, timestamps):
 
 
 def calculate_features(df, base_group_cols, level='process', existing_features=None):
+    """Calculates values of engineered features.
 
+    This function contains the primary code for feature engineering. Features can only be created at one level of
+        aggregation per function call. In other words, all return-phase level features can be created with one call,
+        then supply-phase features can be created and merged with the existing return-phase features in a second call
+        (using the 'existing_features' parameter), and so on.
+    Adding new features at any level of aggregation (i.e. not process-timestamp) should be done here.
+
+    Args:
+        df (dataframe): dataframe of process-timestamp-level data to have features engineered from.
+        base_group_cols (list of str): broadest level of aggregation permitted. In this case, it is process-level
+            plus any other categorical variables which we effectively want to exclude from aggregation
+            (object, pipeline). Only column names in 'df' arg are valid values in this list.
+        level (str): Additional columns to group by when engineering aggregated features, on top of those specified
+            in 'base_group_cols' arg.
+        existing_features (dataframe): existing feature dataset. The features created during the function call will
+            be merged with the existing feature set before the output is returned by the function.
+
+    Returns:
+        output (dataframe): newly engineered feature set, merged with existing features if they were passed through
+            the 'existing_features' arg.
+    """
+
+    # Determine true level of aggregation for set of features to be engineered
     full_group_cols = base_group_cols + [level] if level != 'process' else base_group_cols
     df_groupby = df.groupby(full_group_cols)
 
@@ -118,18 +188,21 @@ def calculate_features(df, base_group_cols, level='process', existing_features=N
 
                                  'return_temp': df_groupby.return_temperature.min(),
 
-                                 'lsh_caus': df_groupby.tank_lsh_caustic.sum() / (df_groupby.timestamp.max() -
-                                                                                  df_groupby.timestamp.min()).astype(
-                                     'timedelta64[s]'),
-                                 'obj_low_lev': df_groupby.object_low_level.sum() / (df_groupby.timestamp.max() -
-                                                                                     df_groupby.timestamp.min()).astype(
-                                     'timedelta64[s]'),
+                                 'lsh_caus': df_groupby.tank_lsh_caustic.sum() /
+                                             (df_groupby.timestamp.max() - df_groupby.timestamp.min()).astype(
+                                              'timedelta64[s]'),
+                                 'obj_low_lev': df_groupby.object_low_level.sum() /
+                                                (df_groupby.timestamp.max() - df_groupby.timestamp.min()).astype(
+                                                'timedelta64[s]'),
                                  }).reset_index()
     else:
         features = pd.DataFrame({'total_duration': (df_groupby.timestamp.max() -
                                                     df_groupby.timestamp.min()).astype('timedelta64[s]')
                                  }).reset_index()
 
+    # If the features are at a more granular level than 'process', bring them up to process-level by unpivoting columns
+    # For example, 'row_count' is calculated at a phase-level, so this will transform 'row_count' into
+    #   'row_count_pre_rinse', 'row_count_caustic', etc.
     if level != 'process':
         features = pd.pivot_table(features,
                                   index=base_group_cols,
@@ -139,12 +212,14 @@ def calculate_features(df, base_group_cols, level='process', existing_features=N
         features.columns = [' '.join(col).strip() for col in features.columns.values]
         features.columns = features.columns.str.replace(' ', '_')
 
+    # Merge newly created process-level features to existing ones, if necessary
     output = features if existing_features is None else features.merge(existing_features, on=base_group_cols)
 
     return output
 
 
 def remove_outliers(processed_train_data, response):
+    """Remove outliers from dataset. Only training data should be passed to this function."""
 
     # Remove processed train data with unusually short or long train duration
     output = processed_train_data[(processed_train_data.total_duration > 30) &
@@ -162,7 +237,3 @@ def remove_outliers(processed_train_data, response):
     logger.info('Number of response outliers removed: ' + str(duration_dim - output.shape[0]))
 
     return output
-
-
-def subset_df_cols(regex, df):
-    return set(filter(lambda x: re.search(regex, x), list(df.columns)))
