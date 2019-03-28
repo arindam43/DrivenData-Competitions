@@ -150,9 +150,9 @@ def build_lgbm_test_datasets(full_train_data, test_data, response, cols_to_inclu
 
 
 def build_validation_models(model_type, processed_train_data, processed_val_data, params, response, cols_to_include,
-                 train_ratio, max_train_ratio, tuning_params, validation_results, cols,
-                 predictions=None, visualize=False, vis_dependence_predictor=None, vis_cutoff=None,
-                 vis_interaction='auto'):
+                            train_ratio, max_train_ratio, tuning_params, validation_results, cols,
+                            predictions=None, visualize=False, vis_dependence_predictor=None, vis_cutoff=None,
+                            vis_interaction='auto'):
     """Builds LightGBM datasets and models for train/validation purposes.
 
     Args:

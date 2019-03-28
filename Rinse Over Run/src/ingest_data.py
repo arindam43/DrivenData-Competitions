@@ -99,7 +99,7 @@ def preprocess_data(df, test_data, start_times, return_phase_defs=None, supply_p
     logger.info('Calculating process-timestamp-level features...')
     # Return phase definition
     # Use shortened versions of phase names to avoid issues when simulating mid-process predictions
-    # Said simulation drops columns using regex that checks for full phase name
+    # Simulation drops columns using regex that checks for full phase name
     df['return_phase'] = df.phase + '_' + np.where(df.return_drain == True, 'dr',
                                           np.where(df.return_caustic == True, 'cs',
                                           np.where(df.return_acid == True, 'ac',
@@ -142,7 +142,6 @@ def preprocess_data(df, test_data, start_times, return_phase_defs=None, supply_p
     df['end_residue'] = df.return_residue * (df.phase_elapse_end <= 40)
 
     logger.info('Pre-processing of raw ' + data_type + ' data finished.')
-
 
     if return_phase_defs is None:
         return df, return_phases, supply_phases

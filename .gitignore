@@ -1,9 +1,0 @@
-*.csv
-*.twb
-Rinse Over Run/__pycache__/
-Rinse Over Run/EDA/
-Rinse Over Run/Predictions/
-.idea/
-*.pkl
-Rinse Over Run/Report/
-*.gitignore

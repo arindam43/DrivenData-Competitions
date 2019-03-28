@@ -10,7 +10,7 @@ from engineer_features import create_model_datasets
 from build_models import build_test_models
 
 
-def predict_test_values(raw_data, test_data, start_times, metadata, path,params, response, test_iterations, labels,
+def predict_test_values(raw_data, test_data, start_times, metadata, path, params, response, test_iterations, labels,
                         cols_to_include, save_to_local=False):
     """Builds models on full training test and makes predictions on test set.
 
