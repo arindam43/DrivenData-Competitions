@@ -22,7 +22,7 @@ This detailed guide assumes that you are using Windows 10, Anaconda, and PyCharm
     *python setup.py install*  
    This should ensure that the modified version of LightGBM is installed to the correct environment, 'rinseoverrundemo'.
 7. After all packages have been installed, create a new project in PyCharm and set up the directory structure according to the **Directory and File Structure** section below.  
-8. In PyCharm, go to File -> Settings -> Project: *project name* -> Project Interpreter and set the path to the correct version of Python. When you are finished, the Project Interpreter dropdown menu should be populated with something that looks like this: 'Python 3.6 C:/.../rinseoverrundemo\python.exe'. The list of packages displayed should also correspond to those installed in the 'rinseoverrundemo' environment created through conda.  
+8. In PyCharm, go to File -> Settings -> Project: *project name* -> Project Interpreter and set the path to the installation of Python associated with the 'rinseoverrundemo' environment. When you are finished, the Project Interpreter dropdown menu should be populated with something that looks like this: 'Python 3.6 C:/.../rinseoverrundemo/python.exe'. The list of packages displayed should also correspond to those installed in the 'rinseoverrundemo' environment created through conda.  
 9. Run main.py to generate the test set predictions.  
   
 ## Install Requirements  
