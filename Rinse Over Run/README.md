@@ -63,20 +63,20 @@ Below are the basic requirements; a full list of packages, including dependencie
 Directories are indicated in bold.  
   
 **Rinse-Over-Run**  
-> **data** 
->> train_values.pkl  
->> test_values.pkl  
->> recipe_metadata.csv  
->> train_labels.csv  
-> **predictions**  
->> *initially empty*  
-> **src**  
->> build_models.py  
->> engineer_features.py  
->> ingest_data.py  
->> main.py  
->> make_predictions.py  
->> visualize_insights.py  
+  * **data** 
+    * train_values.pkl  
+    * test_values.pkl  
+    * recipe_metadata.csv  
+    * train_labels.csv  
+  * **predictions**  
+    * *initially empty*  
+  * **src**  
+    * build_models.py  
+    * engineer_features.py  
+    * ingest_data.py  
+    * main.py  
+    * make_predictions.py  
+    * visualize_insights.py  
   
 Additional notes:  
   
