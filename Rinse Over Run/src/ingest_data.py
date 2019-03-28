@@ -28,6 +28,7 @@ def ingest_data(path):
         start_times (dataframe): start times for each process in the training and test datasets
 
     """
+
     # Read in data from source files
     logger.info('Raw data not found; reading in raw data from source files...')
     raw_data = pd.read_pickle(path + 'train_values.pkl')

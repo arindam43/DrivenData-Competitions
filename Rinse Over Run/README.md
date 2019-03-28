@@ -15,12 +15,12 @@ This detailed guide assumes that you are using Windows 10, Anaconda, and PyCharm
 4. Clone the LightGBM git repo (can be done with git bash) into the directory that contains the environment (i.e. C:/.../rinseoverrundemo):  
     *git clone --recursive https://github.com/Microsoft/LightGBM.git*  
 5. Make the appropriate changes to the source code outlined in the **LightGBM Installation Instructions** section below.  
-6. Run the following two commands **in anaconda prompt with the rinseoverrundemo environment active**:  
+6. Run the following two commands in anaconda prompt with the rinseoverrundemo environment active:  
     *cd LightGBM/python-package*  
     *python setup.py install*  
-   This will ensure that the modified version of LightGBM is installed to the correct environment, 'rinseoverrundemo'!  
+   This should ensure that the modified version of LightGBM is installed to the correct environment, 'rinseoverrundemo'.
 7. After all packages have been installed, create a new project in PyCharm and set up the directory structure according to the **Directory and File Structure** section below.  
-8. In PyCharm, go to File -> Settings -> Project: XYZ -> Project Interpreter and set the path to the correct version of python. When you are finished, the Project Interpreter dropdown menu should be populated with something that looks like this: 'Python 3.6 C:/.../rinseoverrundemo\python.exe'. The list of packages displayed should also correspond to those installed in the 'rinseoverrundemo' environment created through conda.  
+8. In PyCharm, go to File -> Settings -> Project: *project name* -> Project Interpreter and set the path to the correct version of Python. When you are finished, the Project Interpreter dropdown menu should be populated with something that looks like this: 'Python 3.6 C:/.../rinseoverrundemo\python.exe'. The list of packages displayed should also correspond to those installed in the 'rinseoverrundemo' environment created through conda.  
 9. Run main.py to generate the test set predictions.  
   
 ## Install Requirements  

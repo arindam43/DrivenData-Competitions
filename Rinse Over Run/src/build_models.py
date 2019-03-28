@@ -33,6 +33,7 @@ def select_model_columns(processed_train_data, cols_subset=None):
         cols_to_include (dict): keys are the four model types, values are lists of columns to keep when building
             the model type given by the corresponding key.
     """
+
     # For each of the four models, identify which columns should be kept from overall set
     # Simulates data censoring in test data
     pre_rinse_cols = subset_df_cols(r'(?=.*caustic|.*int_rinse|.*acid|.*other|.*residue|.*cond|.*temp)',

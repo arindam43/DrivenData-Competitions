@@ -32,7 +32,7 @@ def main(path, train_val_split, make_predictions=True, feature_selection=False, 
     2. Pre-processes data for modeling.
     3. Engineers all features, aggregated up to the level of the labeled data (process)
     4. Creates train/validation splits of training data using walk-forward/rolling origin methodology.
-    5. For each split, trains a LightGBM model and evaluates the validation-set predictions.
+    5. For each split, trains a lightgbm model and evaluates the validation-set predictions.
     6. (Optional) Performs grid search across subsets of columns and/or hyperparameters to tune model.
     7. Estimates overall generalization error of model on unseen test data.
     8. (Optional) Trains model on full test data and saves predictions to csv file.
