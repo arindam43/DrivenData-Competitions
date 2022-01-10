@@ -82,7 +82,7 @@ Directories are indicated in bold.
   
 Additional notes:  
   
-- All of the .py scripts assume that os.getcwd() will return the top level folder indicated in the structure above (i.e. C:/..../rinse-over-run). Please add os.chdir() statements to the beginning of each .py script to change the working directory if this is not the case.  
+- All of the .py scripts assume that os.getcwd() will return the top level folder indicated in the structure above (i.e. C:/..../DrivenData-Competitions/Rinse Over Run). Please add os.chdir() statements to the beginning of each .py script to change the working directory if this is not the case.  
 - The raw train_values.csv and test_values.csv files should have the following changes made to them before running main.py:  
         1. Remove all rows with phase = "final_rinse". This step should only affect train_values.csv, as test_values.csv should not have any final rinse data in it. This is easily accomplished by reading in the data using *pd.read_csv()* and subsetting the dataframe using pandas.  
         2. Change the file types from .csv to .pkl. I did this by taking the subsetted dataframes from step 1 and writing them back out to my local directory using *pd.to_pickle()*. This was primarily done for speed when reading the files in to Python, as they are quite large.  
